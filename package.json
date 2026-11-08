@@ -4,7 +4,10 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --test test/*.test.js",
+    "start": "node src/server.js",
+    "dev": "concurrently -n api,web \"node --watch-path=src src/server.js\" \"npm --prefix web run dev\"",
+    "build": "npm --prefix web run build"
   },
   "keywords": [],
   "type": "module",
@@ -12,7 +15,11 @@
     "@anthropic-ai/sdk": "^1.5.0",
     "@whiskeysockets/baileys": "^7.0.0-rc14",
     "dotenv": "^18.0.9",
+    "express": "^5.3.0",
     "pino": "^10.4.0",
     "qrcode-terminal": "^0.12.0"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.6"
   }
 }

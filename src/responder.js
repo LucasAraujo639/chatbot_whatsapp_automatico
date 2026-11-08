@@ -1,40 +1,121 @@
 import fs from "node:fs";
-import Anthropic from "@anthropic-ai/sdk";
+import { chat } from "./llm.js";
+import { loadProfile, loadCorpus, loadLexicon } from "./style.js";
+import { getConfig } from "./config.js";
+import { parseReply } from "./reply-parser.js";
+import { retrieveExamples } from "./retrieval.js";
+import { detectIntent, repliesForIntent } from "./intents.js";
+import { unknownWords, wordSet } from "./lexicon.js";
+import { normalize } from "./topics.js";
+import { allowlist } from "./allowlist.js";
+import { pickBurstSize, limitParts, normalizeBurst } from "./pacing.js";
 
-const client = new Anthropic();
-const MODEL = process.env.MODEL || "claude-opus-5-5";
+export const ABOUT_FILE = "data/about-me.md";
 
-function systemPrompt() {
-  const about = fs.existsSync("data/about-me.md") ? fs.readFileSync("data/about-me.md", "utf8") : "";
-  const prof = fs.existsSync("data/style-profile.json") ? JSON.parse(fs.readFileSync("data/style-profile.json", "utf8")) : null;
-  const ex = prof ? prof.examples.map((e) => `Ella: ${e.her}\nYo: ${e.me}`).join("\n\n") : "";
-  const s = prof?.stats;
-  return `Sos Lucas respondiendo mensajes de WhatsApp a una chica. Escribí EXACTAMENTE como él: mismo tono, largo, muletillas, puntuación y emojis.
+const INTENT_OPTIONS = 6;
+const EXAMPLES = 8;
+const stripMarkers = (t) => t.replace(/^\[\d+\]\s*/gm, "");
+const lastUserText = (history) => stripMarkers(history.findLast((m) => m.role === "user")?.content ?? "");
+const shuffle = (arr, rng) => arr.map((v) => [rng(), v]).sort((a, b) => a[0] - b[0]).map(([, v]) => v);
+const asExample = (me) => me.join("\n---\n");
+
+// Prompt puro (sin I/O) para poder testearlo. Las reglas van al final, donde más pesan para un modelo chico.
+export function buildSystemPrompt({ about = "", profile = null, corpus = null, lexicon = null, allowlist = [], history = [], burstTarget = null, rng = Math.random }) {
+  const incoming = lastUserText(history);
+  const intent = incoming ? detectIntent(incoming) : null;
+
+  let intentBlock = "";
+  if (intent && corpus?.length) {
+    const recent = new Set(history.filter((m) => m.role === "assistant").slice(-6).map((m) => normalize(m.content)));
+    const options = repliesForIntent(corpus, intent.id).filter((me) => !recent.has(normalize(asExample(me))));
+    const chosen = shuffle(options, rng).slice(0, INTENT_OPTIONS);
+    if (chosen.length) intentBlock = `\nSituación detectada: ella te dice "${intent.label}". Estas son respuestas REALES tuyas a ese tipo de mensaje:\n${chosen.map((me, i) => `Opción ${i + 1}:\n${asExample(me)}`).join("\n\n")}\nRespondé con una de estas opciones o con una variación mínima usando las mismas palabras. No uses siempre la misma ni repitas tu última respuesta.\n`;
+  }
+
+  let examples = "";
+  if (corpus?.length) {
+    examples = retrieveExamples(corpus, incoming, { k: EXAMPLES })
+      .map((p) => `Ella: ${p.her.join("\n")}\nYo: ${asExample(p.me)}`).join("\n\n");
+  } else if (profile?.examples) {
+    examples = profile.examples.map((e) => `Ella: ${e.her}\nYo: ${e.me}`).join("\n\n");
+  }
+  const s = profile?.stats;
+
+  return `Sos Lucas respondiendo mensajes de WhatsApp. Escribí EXACTAMENTE como él: mismo tono, largo, muletillas, puntuación y emojis.
 ${s ? `Estadísticas de su estilo: largo medio ${s.avgLen} caracteres, emojis frecuentes: ${s.topEmoji || "ninguno"}, ${s.lowercasePct}% de sus mensajes van todo en minúscula.` : ""}
-
-Reglas:
-- Respuestas cortas y naturales, como chat real. Si querés partir en varios mensajes, separalos con una línea que contenga solo "---".
-- Usá solo los datos de abajo. Si te preguntan algo que no sabés, respondé vago o desviá el tema, sin inventar hechos.
-- Nunca confirmes planes, citas, horarios ni dinero.
-- No digas que sos una IA ni rompas el personaje; devolvé solo el texto del mensaje, sin comillas ni explicaciones.
-
+${lexicon?.top?.length ? `\nVocabulario real de Lucas (palabras y apodos que usa; no uses otros): ${[...lexicon.top, ...allowlist].join(", ")}\n` : ""}
 Datos sobre Lucas:
 ${about}
 
-Ejemplos reales de cómo contesta:
-${ex}`;
+Ejemplos reales de situaciones parecidas (ella → Lucas):
+${examples}
+${intentBlock}
+REGLAS (en orden de prioridad):
+1. Respondé SOLO a lo que ella dijo en sus últimos mensajes y seguí el hilo de la charla. Prohibido introducir temas, planes, personas, lugares o hechos nuevos que no hayan aparecido en la conversación.
+2. Hacé una pregunta solo si continúa exactamente el mismo tema; si no, no preguntes.
+3. Sobre Lucas afirmá únicamente lo que está en "Datos sobre Lucas". Si ella pregunta algo que no está ahí, no inventes: respondé corto y neutro con una reacción como las de los ejemplos.
+4. Usá solo palabras, apodos, risas y emojis que aparezcan en su vocabulario o en los ejemplos. Nunca inventes formas nuevas de saludar ni de escribir.
+5. Mismo largo y forma que los ejemplos: respuestas cortas y naturales, como chat real.
+6. Nunca confirmes planes, citas, horarios ni dinero.
+7. No digas que sos una IA ni rompas el personaje; devolvé solo el texto del mensaje, sin comillas ni explicaciones.
+
+Formato de respuesta:
+${burstInstruction(burstTarget)}
+- Si ella mandó varios mensajes numerados ([1], [2]...), podés empezar un mensaje con su número entre corchetes, por ejemplo "[2] jaja sí", para responderle puntualmente a ese. Hacelo solo cuando aporte (a veces sí, a veces no); el número va únicamente al principio del mensaje.`;
 }
 
-export async function reply(history) {
-  // history: [{role:"user"|"assistant", content}] alternando, termina en user
-  const res = await client.messages.create({
-    model: MODEL,
-    max_tokens: 1000,
-    output_config: { effort: "low" },
-    system: systemPrompt(),
-    messages: history,
-  });
-  if (res.stop_reason === "refusal") return null;
-  const text = res.content.filter((b) => b.type === "text").map((b) => b.text).join("").trim();
-  return text || null;
+const burstInstruction = (n) =>
+  n === 1
+    ? "- Respondé con UN solo mensaje."
+    : n > 1
+      ? `- Respondé con exactamente ${n} mensajes seguidos, separados por una línea con solo "---". Cada uno tiene que aportar algo y vincularse con el anterior, como en un chat real.`
+      : '- Podés mandar varios mensajes seguidos, separados por una línea con solo "---". Que cada uno aporte algo y se vincule con el anterior, como en un chat real.';
+
+const followUpInstruction = ({ attempt, minutesSilent }) =>
+  `[Instrucción interna, no es un mensaje de ella] Ella no contestó hace ${minutesSilent} minutos y es tu seguimiento número ${attempt + 1}. Escribí por tu cuenta un mensaje corto y natural para retomar la charla: sin reprochar, sin presionar, sin repetir lo que ya dijiste.`;
+
+const correctionInstruction = (words) =>
+  `[Corrección interna, no es un mensaje de ella] Tu respuesta usó palabras que Lucas nunca escribe: ${words.map((w) => `"${w}"`).join(", ")}. Reescribila con el mismo sentido usando solo su vocabulario y las formas de los ejemplos.`;
+
+const defaultDeps = {
+  getConfig,
+  chat,
+  random: Math.random,
+  load: () => ({
+    about: fs.existsSync(ABOUT_FILE) ? fs.readFileSync(ABOUT_FILE, "utf8") : "",
+    profile: loadProfile(), corpus: loadCorpus(), lexicon: loadLexicon(), allowlist: allowlist.list(),
+  }),
+};
+
+/**
+ * Genera la respuesta del bot y la controla antes de devolverla.
+ * Devuelve { parts: [{text, replyTo}], blocked: string[]|null, notes: string[], flagged: string[] }
+ *  - blocked: palabras ajenas que persistieron tras los reintentos (no hay que enviar nada).
+ *  - notes: correcciones hechas en el camino (para mostrar en el chat de prueba).
+ *  - flagged: palabras ajenas detectadas (aunque se hayan corregido): la UI ofrece agregarlas a las permitidas.
+ */
+export async function respond(history, { followUp, incomingCount = 0 } = {}, deps = defaultDeps) {
+  const cfg = deps.getConfig();
+  const data = deps.load();
+  const burstTarget = pickBurstSize(cfg.burst, deps.random);
+  const system = buildSystemPrompt({ ...data, history, burstTarget, rng: deps.random });
+  const base = followUp ? [...history, { role: "user", content: followUpInstruction(followUp) }] : history;
+  const guardOn = cfg.guard?.enabled && data.lexicon?.words;
+  const allowed = wordSet(data.about, ...(data.allowlist ?? []), ...history.slice(-10).map((m) => stripMarkers(m.content)));
+  const notes = [];
+  const flagged = new Set(); // todas las palabras ajenas detectadas, para ofrecer "Permitir"
+
+  let messages = base;
+  let unknown = [];
+  for (let attempt = 0; attempt <= (guardOn ? cfg.guard.maxRetries : 0); attempt++) {
+    const out = await deps.chat(cfg.provider, system, messages);
+    const parts = out ? limitParts(parseReply(out, incomingCount), normalizeBurst(cfg.burst).max) : [];
+    if (!parts.length) return { parts: [], blocked: null, notes, flagged: [] };
+    unknown = guardOn ? [...new Set(parts.flatMap((p) => unknownWords(p.text, data.lexicon, allowed)))] : [];
+    if (!unknown.length) return { parts, blocked: null, notes, flagged: [...flagged] };
+    unknown.forEach((w) => flagged.add(w));
+    notes.push(`Corregí: ${unknown.join(", ")}`);
+    messages = [...base, { role: "assistant", content: out }, { role: "user", content: correctionInstruction(unknown) }];
+  }
+  return { parts: [], blocked: unknown, notes, flagged: [...flagged] };
 }
