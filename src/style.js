@@ -4,6 +4,8 @@ import { buildLexicon } from "./lexicon.js";
 const LINE = /^‎?\[?(\d{1,2}[\/.]\d{1,2}[\/.]\d{2,4}),? (\d{1,2}:\d{2})(?::\d{2})?(?:\s?[ap]\.?\s?m\.?)?\]?\s*-?\s*([^:]+?): (.*)$/i;
 const SKIP = /omitted|omitido|<Multimedia|mensaje eliminado|eliminaste este mensaje|image omitted|imagen omitida|you deleted this message|this message was deleted|se elimin[oó] este mensaje|^null$/i;
 
+const EDITED = /\s*<(?:This message was edited|Se edit[oó] este mensaje\.?)>/gi;
+
 export function parseText(raw) {
   const msgs = [];
   for (const line of raw.split(/\r?\n/)) {
@@ -11,7 +13,7 @@ export function parseText(raw) {
     if (m) msgs.push({ who: m[3].trim(), text: m[4].trim() });
     else if (msgs.length && line.trim()) msgs[msgs.length - 1].text += "\n" + line.trim();
   }
-  return msgs.map((m) => ({ ...m, text: m.text.replace(/[\u200e\u200f]/g, "").trim() })).filter((m) => m.text && !SKIP.test(m.text));
+  return msgs.map((m) => ({ ...m, text: m.text.replace(/[\u200e\u200f]/g, "").replace(EDITED, "").trim() })).filter((m) => m.text && !SKIP.test(m.text));
 }
 
 export function participants(msgs) {

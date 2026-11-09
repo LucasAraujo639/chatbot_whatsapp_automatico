@@ -106,3 +106,8 @@ test("saveProfile usa solo los últimos N mensajes", async () => {
     assert.equal(saveProfile(msgs, "Lucas", 2).usedMessages, 2);
   } finally { process.chdir(prev); }
 });
+
+test("parseText quita la marca de mensaje editado (inglés y español)", () => {
+  const raw = "12/05/2024, 10:00 - Yo: Mala <This message was edited>\n12/05/2024, 10:01 - Yo: hola <Se editó este mensaje.>";
+  assert.deepEqual(parseText(raw).map((m) => m.text), ["Mala", "hola"]);
+});

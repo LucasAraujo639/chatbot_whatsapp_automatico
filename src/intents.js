@@ -1,5 +1,6 @@
 // Situaciones típicas (saludos, cariño) para mostrarle al modelo tus respuestas REALES a ellas.
 import { normalize } from "./topics.js";
+import { isContextual } from "./context-filter.js";
 
 export const INTENTS = [
   { id: "buenas_noches", label: "buenas noches / se va a dormir", test: /buenas? noches?|que descanses|descansa|me voy a dormir|me voy a acostar|dulces suenos/ },
@@ -23,7 +24,8 @@ export function repliesForIntent(corpus, intentId) {
     const byIntent = new Map();
     for (const pair of corpus) {
       const intent = detectIntent(pair.her.at(-1) ?? "");
-      if (!intent || pair.me.join(" ").length > MAX_REPLY_CHARS) continue;
+      const reply = pair.me.join("\n");
+      if (!intent || reply.length > MAX_REPLY_CHARS || isContextual(reply)) continue;
       byIntent.set(intent.id, [...(byIntent.get(intent.id) ?? []), pair.me]);
     }
     cache.set(corpus, byIntent);
