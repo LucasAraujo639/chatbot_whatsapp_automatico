@@ -11,6 +11,8 @@ import { allowlist } from "./allowlist.js";
 import { pickBurstSize, limitParts, normalizeBurst } from "./pacing.js";
 
 export const ABOUT_FILE = "data/about-me.md";
+// Cuántos mensajes del historial se le pasan al modelo como contexto.
+export const CONTEXT_MESSAGES = 30;
 
 const INTENT_OPTIONS = 6;
 const EXAMPLES = 8;

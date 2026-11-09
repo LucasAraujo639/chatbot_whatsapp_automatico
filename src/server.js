@@ -10,14 +10,12 @@ import simulateRouter from "./routes/simulate.js";
 import contactsRouter from "./routes/contacts.js";
 import { createVocabularyRouter } from "./routes/vocabulary.js";
 import { allowlist } from "./allowlist.js";
+import { publicConfig, withoutMaskedKey, resolveProvider } from "./provider-config.js";
 
 const app = express();
 app.use(express.json({ limit: "20mb" }));
 
-const publicCfg = () => {
-  const c = getConfig();
-  return { ...c, provider: { ...c.provider, apiKey: c.provider.apiKey ? "••••" + c.provider.apiKey.slice(-4) : "" } };
-};
+const publicCfg = () => publicConfig(getConfig());
 const snapshot = () => ({ connection: state.connection, qr: state.qr, log: state.log, config: publicCfg(), allowedWords: allowlist.list(), profile: (({ me, stats, pairs, vocabulary }) => ({ me, stats, pairs, vocabulary }))(loadProfile() || {}) });
 
 app.get("/api/state", (_, res) => res.json(snapshot()));
@@ -30,10 +28,7 @@ app.get("/api/events", (req, res) => {
 });
 
 app.put("/api/config", (req, res) => {
-  const patch = { ...req.body };
-  // Si la API key viene enmascarada, no la pisamos
-  if (patch.provider?.apiKey?.startsWith("••••")) delete patch.provider.apiKey;
-  updateConfig(patch);
+  updateConfig(withoutMaskedKey(req.body));
   events.emit("update");
   res.json(publicCfg());
 });
@@ -51,12 +46,12 @@ app.post("/api/style/import", (req, res) => {
 app.get("/api/about", (_, res) => res.json({ text: fs.existsSync(ABOUT_FILE) ? fs.readFileSync(ABOUT_FILE, "utf8") : "" }));
 app.put("/api/about", (req, res) => { fs.mkdirSync("data", { recursive: true }); fs.writeFileSync(ABOUT_FILE, req.body.text || ""); res.json({ ok: true }); });
 
-const realProvider = (p) => ({ ...getConfig().provider, ...p, apiKey: p?.apiKey?.startsWith("••••") || !p?.apiKey ? getConfig().provider.apiKey : p.apiKey });
+const realProvider = (override) => resolveProvider(getConfig().provider, override);
 app.post("/api/llm/models", async (req, res) => {
   try { res.json({ models: await listModels(realProvider(req.body)) }); } catch (e) { res.status(400).json({ error: e.message }); }
 });
 app.post("/api/llm/test", async (req, res) => {
-  try { res.json({ reply: await chat(realProvider(req.body), "Respondé en una sola frase corta.", [{ role: "user", content: "Decime hola." }]) }); }
+  try { res.json({ reply: await chat(realProvider(req.body),"Respondé en una sola frase corta.", [{ role: "user", content: "Decime hola." }]) }); }
   catch (e) { res.status(400).json({ error: e.message }); }
 });
 
