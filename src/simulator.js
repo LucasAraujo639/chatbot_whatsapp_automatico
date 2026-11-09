@@ -3,7 +3,7 @@
 // Es stateless: el historial lo manda el cliente, no se guarda nada en disco.
 import { getConfig } from "./config.js";
 import { findSensitiveTopic } from "./topics.js";
-import { respond } from "./responder.js";
+import { respond, CONTEXT_MESSAGES } from "./responder.js";
 import { formatIncoming } from "./reply-parser.js";
 import { delayFor } from "./followup.js";
 import { plannedDelays } from "./pacing.js";
@@ -36,13 +36,18 @@ export function validateMessages(messages, { lastRole = "user" } = {}) {
 // Cuánto "escribiría" el bot antes de cada mensaje (mismo cálculo que el envío real).
 const pacing = (parts, deps) => plannedDelays(parts.length, deps.getConfig().typing);
 
+// Pide la respuesta al modelo y arma el resultado común a ambas simulaciones.
+async function generate(history, opts, deps) {
+  const { parts, blocked, notes, flagged } = await deps.respond(history.slice(-CONTEXT_MESSAGES), opts);
+  if (!parts.length && !blocked) throw new Error("El modelo no devolvió texto");
+  return { paused: false, topic: null, parts, blocked, notes, flagged, delaysMs: pacing(parts, deps) };
+}
+
 export async function simulateTurn(rawMessages, deps = { getConfig, respond }) {
   const { history, lastBatchSize, lastText } = validateMessages(rawMessages);
   const topic = findSensitiveTopic(lastText, deps.getConfig().sensitiveTopics);
   if (topic) return { paused: true, topic: topic.label, parts: [] };
-  const { parts, blocked, notes, flagged } = await deps.respond(history.slice(-30), { incomingCount: lastBatchSize });
-  if (!parts.length && !blocked) throw new Error("El modelo no devolvió texto");
-  return { paused: false, topic: null, parts, blocked, notes, flagged, delaysMs: pacing(parts, deps) };
+  return generate(history, { incomingCount: lastBatchSize }, deps);
 }
 
 // Seguimiento: ella no contestó después del último mensaje del bot.
@@ -51,7 +56,6 @@ export async function simulateFollowUp(rawMessages, rawAttempt = 0, deps = { get
   const attempt = Math.min(MAX_ATTEMPT, Math.max(0, Number.parseInt(rawAttempt, 10) || 0));
   const cfg = deps.getConfig().followUp;
   const minutesSilent = Math.round(delayFor(cfg, attempt) / 60000);
-  const { parts, blocked, notes, flagged } = await deps.respond(history.slice(-30), { followUp: { attempt, minutesSilent } });
-  if (!parts.length && !blocked) throw new Error("El modelo no devolvió texto");
-  return { paused: false, topic: null, parts, blocked, notes, flagged, delaysMs: pacing(parts, deps), attempt, minutesSilent };
+  const result = await generate(history, { followUp: { attempt, minutesSilent } }, deps);
+  return { ...result, attempt, minutesSilent };
 }

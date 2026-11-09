@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import pino from "pino";
 import makeWASocket, { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, generateMessageID } from "@whiskeysockets/baileys";
 import { getConfig, updateConfig } from "./config.js";
-import { respond } from "./responder.js";
+import { respond, CONTEXT_MESSAGES } from "./responder.js";
 import { formatIncoming, plainText } from "./reply-parser.js";
 import { createFollowUpScheduler } from "./followup.js";
 import { typingDelayMs } from "./pacing.js";
@@ -13,12 +13,17 @@ import { findSensitiveTopic } from "./topics.js";
 const HISTORY_FILE = "data/history.json";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+const LOG_LIMIT = 100; // entradas que se guardan en el log del panel
+const STORED_MESSAGES = 60; // mensajes de historial que se persisten por contacto
+const STALE_MESSAGE_SEC = 120; // un mensaje propio más viejo que esto es una reentrega, no algo escrito ahora
+const TYPING_REFRESH_MS = 8000; // WhatsApp apaga "escribiendo…" solo a los pocos segundos
+
 export const events = new EventEmitter();
 export const state = { connection: "closed", qr: null, log: [] };
 
 function log(kind, text, contact, words) {
   const entry = { t: Date.now(), kind, text, contact, ...(words?.length && { words }) };
-  state.log = [...state.log.slice(-99), entry];
+  state.log = [...state.log.slice(-(LOG_LIMIT - 1)), entry];
   events.emit("update");
 }
 const setConn = (c, qr = null) => { state.connection = c; state.qr = qr; events.emit("update"); };
@@ -26,6 +31,14 @@ const setConn = (c, qr = null) => { state.connection = c; state.qr = qr; events.
 let history = {};
 try { history = JSON.parse(fs.readFileSync(HISTORY_FILE, "utf8")); } catch {}
 const saveHistory = () => { fs.mkdirSync("data", { recursive: true }); fs.writeFileSync(HISTORY_FILE, JSON.stringify(history, null, 2)); };
+
+// Guarda en el historial lo que el bot le contestó a un contacto y lo persiste.
+function recordReply(number, parts) {
+  const h = (history[number] ||= []);
+  h.push({ role: "assistant", content: plainText(parts) });
+  history[number] = h.slice(-STORED_MESSAGES);
+  saveHistory();
+}
 
 export function setContactPaused(number, paused) {
   const contacts = getConfig().contacts.map((c) => (c.number === number ? { ...c, paused } : c));
@@ -119,15 +132,15 @@ const followUps = createFollowUpScheduler({
 
 // WhatsApp a veces entrega el chat con un ID interno (@lid) en vez del número: lo traducimos.
 async function resolvePhoneNumbers(m) {
-  const jids = [m.key.remoteJid, m.key.remoteJidAlt];
+  const candidates = [m.key.remoteJid, m.key.remoteJidAlt];
   const jid = m.key.remoteJid;
-  if (!phoneNumbersOf(jids).length && jid?.endsWith("@lid")) {
+  if (!phoneNumbersOf(candidates).length && jid?.endsWith("@lid")) {
     try {
       const pn = await sock?.signalRepository?.lidMapping?.getPNForLID(jid);
-      if (pn) jids.push(pn.includes("@") ? pn : toPhoneJid(pn));
+      if (pn) candidates.push(pn.includes("@") ? pn : toPhoneJid(pn));
     } catch {}
   }
-  return phoneNumbersOf(jids);
+  return phoneNumbersOf(candidates);
 }
 
 const reportedUnknown = new Set();
@@ -155,7 +168,7 @@ async function handle(m) {
     if (sentByBot.has(m.key.id)) return;
     // Mensajes viejos reentregados (reconexión/sincronización) no cuentan como "escribiste ahora"
     const ageSec = Date.now() / 1000 - Number(m.messageTimestamp?.low ?? m.messageTimestamp ?? 0);
-    if (m.messageTimestamp && ageSec > 120) return;
+    if (m.messageTimestamp && ageSec > STALE_MESSAGE_SEC) return;
     manualUntil.set(contact.number, Date.now() + cfg.manualPauseMin * 60000);
     followUps.cancel(contact.number);
     log("info", `Detecté un mensaje tuyo escrito a mano (id ${m.key.id}); el bot espera ${cfg.manualPauseMin} min.`, contact.number);
@@ -176,9 +189,9 @@ async function handle(m) {
 // Muestra "escribiendo…" durante `ms`; WhatsApp lo apaga solo a los pocos segundos, así que se renueva.
 async function typeFor(jid, ms) {
   await sock.presenceSubscribe(jid);
-  for (let left = ms; left > 0; left -= 8000) {
+  for (let left = ms; left > 0; left -= TYPING_REFRESH_MS) {
     await sock.sendPresenceUpdate("composing", jid);
-    await sleep(Math.min(left, 8000));
+    await sleep(Math.min(left, TYPING_REFRESH_MS));
   }
 }
 
@@ -225,12 +238,10 @@ async function flush(number) {
     if (cfg.ownerNumber) await sock.sendMessage(`${cfg.ownerNumber}@s.whatsapp.net`, { text: `🤖 Pausé el bot con ${contact.name || number} (${topic.label}):\n"${joined}"` });
     return;
   }
-  const { parts, blocked } = await respond(h.slice(-30), { incomingCount: msgs.length });
+  const { parts, blocked } = await respond(h.slice(-CONTEXT_MESSAGES), { incomingCount: msgs.length });
   if (blocked) return log("alert", `Respuesta bloqueada: usó palabras que no usás (${blocked.join(", ")}). Contestá vos.`, number, blocked);
   if (!parts.length) return log("error", "El modelo no devolvió texto", number);
-  h.push({ role: "assistant", content: plainText(parts) });
-  history[number] = h.slice(-60);
-  saveHistory();
+  recordReply(number, parts);
 
   await sendParts(number, b.jid, parts, msgs.map((x) => x.raw));
   followUps.arm(number); // si ella no contesta, el scheduler decide si insistir
@@ -240,12 +251,10 @@ async function flush(number) {
 async function sendFollowUp(number, info) {
   const jid = jids.get(number) || `${number}@s.whatsapp.net`;
   const h = (history[number] ||= []);
-  const { parts, blocked } = await respond(h.slice(-30), { followUp: info });
+  const { parts, blocked } = await respond(h.slice(-CONTEXT_MESSAGES), { followUp: info });
   if (blocked) throw Object.assign(new Error(`Seguimiento bloqueado: usó palabras que no usás (${blocked.join(", ")})`), { words: blocked });
   if (!parts.length) throw new Error("El modelo no devolvió texto");
-  h.push({ role: "assistant", content: plainText(parts) });
-  history[number] = h.slice(-60);
-  saveHistory();
+  recordReply(number, parts);
   log("info", `Seguimiento ${info.attempt + 1} (ella no contesta hace ${info.minutesSilent} min)`, number);
   await sendParts(number, jid, parts);
 }
