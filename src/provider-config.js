@@ -11,7 +11,7 @@ export const publicConfig = (cfg) => ({ ...cfg, provider: { ...cfg.provider, api
 // Si el panel reenvía la clave enmascarada, se descarta para no pisar la real al guardar.
 export function withoutMaskedKey(patch = {}) {
   if (!patch.provider?.apiKey?.startsWith(MASK)) return patch;
-  const { apiKey, ...provider } = patch.provider;
+  const { apiKey: _masked, ...provider } = patch.provider;
   return { ...patch, provider };
 }
 
