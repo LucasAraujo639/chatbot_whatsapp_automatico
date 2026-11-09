@@ -17,6 +17,8 @@ const LOG_LIMIT = 100; // entradas que se guardan en el log del panel
 const STORED_MESSAGES = 60; // mensajes de historial que se persisten por contacto
 const STALE_MESSAGE_SEC = 120; // un mensaje propio más viejo que esto es una reentrega, no algo escrito ahora
 const TYPING_REFRESH_MS = 8000; // WhatsApp apaga "escribiendo…" solo a los pocos segundos
+const MAX_RECONNECT_DELAY_MS = 30000;
+const MINUTE_MS = 60000;
 
 export const events = new EventEmitter();
 export const state = { connection: "closed", qr: null, log: [] };
@@ -26,15 +28,19 @@ function log(kind, text, contact, words) {
   state.log = [...state.log.slice(-(LOG_LIMIT - 1)), entry];
   events.emit("update");
 }
+// Handler para `.catch()`: registra el error en el log del panel (opcionalmente asociado a un contacto).
+const logError = (contact) => (e) => log("error", String(e.message || e), contact);
 const setConn = (c, qr = null) => { state.connection = c; state.qr = qr; events.emit("update"); };
 
 let history = {};
 try { history = JSON.parse(fs.readFileSync(HISTORY_FILE, "utf8")); } catch {}
 const saveHistory = () => { fs.mkdirSync("data", { recursive: true }); fs.writeFileSync(HISTORY_FILE, JSON.stringify(history, null, 2)); };
+const historyOf = (number) => (history[number] ||= []);
+const contactByNumber = (cfg, number) => cfg.contacts.find((c) => c.number === number);
 
 // Guarda en el historial lo que el bot le contestó a un contacto y lo persiste.
 function recordReply(number, parts) {
-  const h = (history[number] ||= []);
+  const h = historyOf(number);
   h.push({ role: "assistant", content: plainText(parts) });
   history[number] = h.slice(-STORED_MESSAGES);
   saveHistory();
@@ -61,7 +67,7 @@ function dropSocket() {
 
 function scheduleReconnect(delayMs) {
   clearTimeout(reconnectTimer);
-  reconnectTimer = setTimeout(() => startBot().catch((e) => log("error", String(e.message || e))), delayMs);
+  reconnectTimer = setTimeout(() => startBot().catch(logError()), delayMs);
 }
 
 export async function startBot() {
@@ -94,7 +100,7 @@ export async function startBot() {
       }
       setConn("connecting");
       if (code === DisconnectReason.restartRequired) return scheduleReconnect(0); // normal justo después de escanear el QR
-      const delay = Math.min(30000, 1000 * 2 ** retries++);
+      const delay = Math.min(MAX_RECONNECT_DELAY_MS, 1000 * 2 ** retries++);
       log("info", `Conexión caída (código ${code ?? "?"}). Reintento en ${Math.round(delay / 1000)}s`);
       scheduleReconnect(delay);
     }
@@ -102,7 +108,7 @@ export async function startBot() {
 
   me.ev.on("messages.upsert", ({ messages, type }) => {
     if (type !== "notify") return;
-    for (const m of messages) handle(m).catch((e) => log("error", String(e.message || e)));
+    for (const m of messages) handle(m).catch(logError());
   });
 }
 
@@ -123,7 +129,7 @@ const followUps = createFollowUpScheduler({
   getConfig,
   canSend: (number) => {
     const cfg = getConfig();
-    const c = cfg.contacts.find((x) => x.number === number);
+    const c = contactByNumber(cfg, number);
     return !!c?.enabled && !cfg.paused && !c.paused && state.connection === "open" && Date.now() >= (manualUntil.get(number) || 0);
   },
   send: sendFollowUp,
@@ -145,45 +151,59 @@ async function resolvePhoneNumbers(m) {
 
 const reportedUnknown = new Set();
 
-async function handle(m) {
-  const jid = m.key.remoteJid;
-  if (!jid || jid.endsWith("@g.us") || jid === "status@broadcast") return;
-  const text = m.message?.conversation || m.message?.extendedTextMessage?.text;
-  if (!text) return;
-  const cfg = getConfig();
-  const phones = await resolvePhoneNumbers(m);
-  const contact = findContact(cfg.contacts, phones);
-  if (!contact) {
-    // Ayuda a diagnosticar "no responde": muestra qué número está llegando realmente (una vez por chat, sin el texto).
-    const shown = phones[0] || `${numberOf(jid)} (ID interno, no se pudo obtener el número)`;
-    if (!m.key.fromMe && !reportedUnknown.has(shown)) {
-      reportedUnknown.add(shown);
-      log("info", `Mensaje de un número que no está en Contactos: ${shown}`);
-    }
-    return;
-  }
+const isIgnoredChat = (jid) => !jid || jid.endsWith("@g.us") || jid === "status@broadcast";
+const messageText = (m) => m.message?.conversation || m.message?.extendedTextMessage?.text;
 
-  if (m.key.fromMe) {
-    // Escribiste vos a mano: el bot calla un rato y no insiste
-    if (sentByBot.has(m.key.id)) return;
-    // Mensajes viejos reentregados (reconexión/sincronización) no cuentan como "escribiste ahora"
-    const ageSec = Date.now() / 1000 - Number(m.messageTimestamp?.low ?? m.messageTimestamp ?? 0);
-    if (m.messageTimestamp && ageSec > STALE_MESSAGE_SEC) return;
-    manualUntil.set(contact.number, Date.now() + cfg.manualPauseMin * 60000);
-    followUps.cancel(contact.number);
-    log("info", `Detecté un mensaje tuyo escrito a mano (id ${m.key.id}); el bot espera ${cfg.manualPauseMin} min.`, contact.number);
-    return;
+// (Re)programa el envío del lote acumulado de un contacto.
+function scheduleFlush(number, b, delayMs) {
+  clearTimeout(b.timer);
+  b.timer = setTimeout(() => flush(number).catch(logError(number)), delayMs);
+}
+
+// Ayuda a diagnosticar "no responde": muestra qué número está llegando realmente (una vez por chat, sin el texto).
+function reportUnknownSender(m, jid, phones) {
+  const shown = phones[0] || `${numberOf(jid)} (ID interno, no se pudo obtener el número)`;
+  if (!m.key.fromMe && !reportedUnknown.has(shown)) {
+    reportedUnknown.add(shown);
+    log("info", `Mensaje de un número que no está en Contactos: ${shown}`);
   }
+}
+
+// Escribiste vos a mano: el bot calla un rato y no insiste.
+function onOwnMessage(m, contact, cfg) {
+  if (sentByBot.has(m.key.id)) return;
+  // Mensajes viejos reentregados (reconexión/sincronización) no cuentan como "escribiste ahora"
+  const ageSec = Date.now() / 1000 - Number(m.messageTimestamp?.low ?? m.messageTimestamp ?? 0);
+  if (m.messageTimestamp && ageSec > STALE_MESSAGE_SEC) return;
+  manualUntil.set(contact.number, Date.now() + cfg.manualPauseMin * MINUTE_MS);
+  followUps.cancel(contact.number);
+  log("info", `Detecté un mensaje tuyo escrito a mano (id ${m.key.id}); el bot espera ${cfg.manualPauseMin} min.`, contact.number);
+}
+
+// Mensaje de ella: se acumula y se responde todo junto tras una espera aleatoria (debounce).
+function onIncomingMessage(m, jid, text, contact, cfg) {
   followUps.cancel(contact.number); // ella escribió: no hace falta insistir
   if (!contact.enabled) return;
   const b = buffers.get(contact.number) || { msgs: [], timer: null };
   b.msgs.push({ text, raw: m }); b.jid = jid;
   jids.set(contact.number, jid);
-  clearTimeout(b.timer);
   const { debounceMinSec: lo, debounceMaxSec: hi } = cfg;
-  b.timer = setTimeout(() => flush(contact.number).catch((e) => log("error", String(e.message || e), contact.number)), (lo + Math.random() * Math.max(0, hi - lo)) * 1000);
+  scheduleFlush(contact.number, b, (lo + Math.random() * Math.max(0, hi - lo)) * 1000);
   buffers.set(contact.number, b);
   log("in", text, contact.number);
+}
+
+async function handle(m) {
+  const jid = m.key.remoteJid;
+  if (isIgnoredChat(jid)) return;
+  const text = messageText(m);
+  if (!text) return;
+  const cfg = getConfig();
+  const phones = await resolvePhoneNumbers(m);
+  const contact = findContact(cfg.contacts, phones);
+  if (!contact) return reportUnknownSender(m, jid, phones);
+  if (m.key.fromMe) return onOwnMessage(m, contact, cfg);
+  onIncomingMessage(m, jid, text, contact, cfg);
 }
 
 // Muestra "escribiendo…" durante `ms`; WhatsApp lo apaga solo a los pocos segundos, así que se renueva.
@@ -211,33 +231,34 @@ async function sendParts(number, jid, parts, quotable = []) {
   }
 }
 
+// Tema sensible: pausa el contacto y avisa al dueño para que conteste él.
+async function pauseForTopic(number, contact, topic, joined, cfg) {
+  setContactPaused(number, true);
+  saveHistory();
+  log("alert", `Pausado por tema: ${topic.label}`, number);
+  if (cfg.ownerNumber) await sock.sendMessage(toPhoneJid(cfg.ownerNumber), { text: `🤖 Pausé el bot con ${contact.name || number} (${topic.label}):\n"${joined}"` });
+}
+
 async function flush(number) {
   const b = buffers.get(number);
   const msgs = b.msgs.splice(0);
   const cfg = getConfig();
-  const contact = cfg.contacts.find((c) => c.number === number);
+  const contact = contactByNumber(cfg, number);
   if (!msgs.length || !contact?.enabled || cfg.paused || contact.paused) return;
   const waitMs = (manualUntil.get(number) || 0) - Date.now();
   if (waitMs > 0) {
     // No descartar lo que ella escribió: se reintenta cuando termina la pausa
     b.msgs.unshift(...msgs);
-    clearTimeout(b.timer);
-    b.timer = setTimeout(() => flush(number).catch((e) => log("error", String(e.message || e), number)), waitMs + 1000);
-    return log("info", `Escribiste vos, el bot espera ${Math.ceil(waitMs / 60000)} min más.`, number);
+    scheduleFlush(number, b, waitMs + 1000);
+    return log("info", `Escribiste vos, el bot espera ${Math.ceil(waitMs / MINUTE_MS)} min más.`, number);
   }
 
   const texts = msgs.map((x) => x.text);
   const joined = texts.join("\n");
-  const h = (history[number] ||= []);
+  const h = historyOf(number);
   h.push({ role: "user", content: formatIncoming(texts) });
   const topic = findSensitiveTopic(joined, cfg.sensitiveTopics);
-  if (topic) {
-    setContactPaused(number, true);
-    saveHistory();
-    log("alert", `Pausado por tema: ${topic.label}`, number);
-    if (cfg.ownerNumber) await sock.sendMessage(`${cfg.ownerNumber}@s.whatsapp.net`, { text: `🤖 Pausé el bot con ${contact.name || number} (${topic.label}):\n"${joined}"` });
-    return;
-  }
+  if (topic) return pauseForTopic(number, contact, topic, joined, cfg);
   const { parts, blocked } = await respond(h.slice(-CONTEXT_MESSAGES), { incomingCount: msgs.length });
   if (blocked) return log("alert", `Respuesta bloqueada: usó palabras que no usás (${blocked.join(", ")}). Contestá vos.`, number, blocked);
   if (!parts.length) return log("error", "El modelo no devolvió texto", number);
@@ -249,9 +270,8 @@ async function flush(number) {
 
 // Mensaje espontáneo cuando ella dejó de contestar.
 async function sendFollowUp(number, info) {
-  const jid = jids.get(number) || `${number}@s.whatsapp.net`;
-  const h = (history[number] ||= []);
-  const { parts, blocked } = await respond(h.slice(-CONTEXT_MESSAGES), { followUp: info });
+  const jid = jids.get(number) || toPhoneJid(number);
+  const { parts, blocked } = await respond(historyOf(number).slice(-CONTEXT_MESSAGES), { followUp: info });
   if (blocked) throw Object.assign(new Error(`Seguimiento bloqueado: usó palabras que no usás (${blocked.join(", ")})`), { words: blocked });
   if (!parts.length) throw new Error("El modelo no devolvió texto");
   recordReply(number, parts);
