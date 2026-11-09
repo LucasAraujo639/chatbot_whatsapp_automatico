@@ -9,6 +9,7 @@ export const DEFAULTS = {
   debounceMaxSec: 10,
   manualPauseMin: 30,
   ownerNumber: "",
+  timezone: "America/Argentina/Buenos_Aires", // zona horaria IANA para saludar y hablar acorde a la hora
   contacts: [], // { number, name, enabled, paused }
   provider: {
     baseUrl: "https://opencode.ai/inference/openai/v1",

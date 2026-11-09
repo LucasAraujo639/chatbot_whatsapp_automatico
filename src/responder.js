@@ -9,6 +9,7 @@ import { unknownWords, wordSet } from "./lexicon.js";
 import { normalize } from "./topics.js";
 import { allowlist } from "./allowlist.js";
 import { pickBurstSize, limitParts, normalizeBurst } from "./pacing.js";
+import { timeBlock, localTime, wrongGreeting, fixGreetings } from "./time-context.js";
 
 export const ABOUT_FILE = "data/about-me.md";
 // Cuántos mensajes del historial se le pasan al modelo como contexto.
@@ -22,7 +23,7 @@ const shuffle = (arr, rng) => arr.map((v) => [rng(), v]).sort((a, b) => a[0] - b
 const asExample = (me) => me.join("\n---\n");
 
 // Prompt puro (sin I/O) para poder testearlo. Las reglas van al final, donde más pesan para un modelo chico.
-export function buildSystemPrompt({ about = "", profile = null, corpus = null, lexicon = null, allowlist = [], history = [], burstTarget = null, rng = Math.random }) {
+export function buildSystemPrompt({ about = "", profile = null, corpus = null, lexicon = null, allowlist = [], history = [], burstTarget = null, timeContext = "", rng = Math.random }) {
   const incoming = lastUserText(history);
   const intent = incoming ? detectIntent(incoming) : null;
 
@@ -52,7 +53,7 @@ ${about}
 Ejemplos reales de situaciones parecidas (ella → Lucas):
 ${examples}
 ${intentBlock}
-REGLAS (en orden de prioridad):
+${timeContext ? `${timeContext}\n` : ""}REGLAS (en orden de prioridad):
 1. Respondé SOLO a lo que ella dijo en sus últimos mensajes y seguí el hilo de la charla. Prohibido introducir temas, planes, personas, lugares o hechos nuevos que no hayan aparecido en la conversación.
 2. Hacé una pregunta solo si continúa exactamente el mismo tema; si no, no preguntes.
 3. Sobre Lucas afirmá únicamente lo que está en "Datos sobre Lucas". Si ella pregunta algo que no está ahí, no inventes: respondé corto y neutro con una reacción como las de los ejemplos.
@@ -79,10 +80,14 @@ const followUpInstruction = ({ attempt, minutesSilent }) =>
 const correctionInstruction = (words) =>
   `[Corrección interna, no es un mensaje de ella] Tu respuesta usó palabras que Lucas nunca escribe: ${words.map((w) => `"${w}"`).join(", ")}. Reescribila con el mismo sentido usando solo su vocabulario y las formas de los ejemplos.`;
 
+const greetingCorrection = (bad, hour) =>
+  `[Corrección interna, no es un mensaje de ella] Dijiste "${bad.join('", "')}" pero son las ${String(hour).padStart(2, "0")} h. Reescribila con el mismo sentido usando un saludo que corresponda a esa hora (o sin saludo).`;
+
 const defaultDeps = {
   getConfig,
   chat,
   random: Math.random,
+  now: Date.now,
   load: () => ({
     about: fs.existsSync(ABOUT_FILE) ? fs.readFileSync(ABOUT_FILE, "utf8") : "",
     profile: loadProfile(), corpus: loadCorpus(), lexicon: loadLexicon(), allowlist: allowlist.list(),
@@ -100,7 +105,9 @@ export async function respond(history, { followUp, incomingCount = 0 } = {}, dep
   const cfg = deps.getConfig();
   const data = deps.load();
   const burstTarget = pickBurstSize(cfg.burst, deps.random);
-  const system = buildSystemPrompt({ ...data, history, burstTarget, rng: deps.random });
+  const nowMs = (deps.now ?? Date.now)();
+  const { hour } = localTime(nowMs, cfg.timezone);
+  const system = buildSystemPrompt({ ...data, history, burstTarget, timeContext: timeBlock(nowMs, cfg.timezone), rng: deps.random });
   const base = followUp ? [...history, { role: "user", content: followUpInstruction(followUp) }] : history;
   const guardOn = cfg.guard?.enabled && data.lexicon?.words;
   const allowed = wordSet(data.about, ...(data.allowlist ?? []), ...history.slice(-10).map((m) => stripMarkers(m.content)));
@@ -109,15 +116,28 @@ export async function respond(history, { followUp, incomingCount = 0 } = {}, dep
 
   let messages = base;
   let unknown = [];
-  for (let attempt = 0; attempt <= (guardOn ? cfg.guard.maxRetries : 0); attempt++) {
+  // Un saludo que no corresponde a la hora también se reintenta, aunque el control de palabras esté apagado.
+  const guardRetries = guardOn ? cfg.guard.maxRetries : 0;
+  const maxRetries = Math.max(guardRetries, 1);
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const out = await deps.chat(cfg.provider, system, messages);
-    const parts = out ? limitParts(parseReply(out, incomingCount), normalizeBurst(cfg.burst).max) : [];
+    let parts = out ? limitParts(parseReply(out, incomingCount), normalizeBurst(cfg.burst).max) : [];
     if (!parts.length) return { parts: [], blocked: null, notes, flagged: [] };
     unknown = guardOn ? [...new Set(parts.flatMap((p) => unknownWords(p.text, data.lexicon, allowed)))] : [];
-    if (!unknown.length) return { parts, blocked: null, notes, flagged: [...flagged] };
+    const badGreetings = [...new Set(parts.map((p) => wrongGreeting(p.text, hour)).filter(Boolean))];
+    if (!unknown.length && !badGreetings.length) return { parts, blocked: null, notes, flagged: [...flagged] };
+    if (!unknown.length && attempt === maxRetries) {
+      // Último recurso: el modelo insiste con un saludo fuera de hora; se lo cambiamos nosotros.
+      notes.push(`Cambié el saludo: ${badGreetings.join(", ")}`);
+      parts = parts.map((p) => ({ ...p, text: fixGreetings(p.text, hour) }));
+      return { parts, blocked: null, notes, flagged: [...flagged] };
+    }
     unknown.forEach((w) => flagged.add(w));
-    notes.push(`Corregí: ${unknown.join(", ")}`);
-    messages = [...base, { role: "assistant", content: out }, { role: "user", content: correctionInstruction(unknown) }];
+    const instructions = [];
+    if (unknown.length) { notes.push(`Corregí: ${unknown.join(", ")}`); instructions.push(correctionInstruction(unknown)); }
+    if (badGreetings.length) { notes.push(`Saludo fuera de hora: ${badGreetings.join(", ")}`); instructions.push(greetingCorrection(badGreetings, hour)); }
+    if (unknown.length && attempt >= guardRetries) break; // sin reintentos de palabras ajenas disponibles
+    messages = [...base, { role: "assistant", content: out }, { role: "user", content: instructions.join("\n") }];
   }
   return { parts: [], blocked: unknown, notes, flagged: [...flagged] };
 }
