@@ -3,7 +3,7 @@ import { api } from '../api'
 
 export default function Settings({ s, save, notify }) {
   const c = s.config
-  const [t, setT] = useState({ debounceMinSec: c.debounceMinSec, debounceMaxSec: c.debounceMaxSec, manualPauseMin: c.manualPauseMin, ownerNumber: c.ownerNumber })
+  const [t, setT] = useState({ debounceMinSec: c.debounceMinSec, debounceMaxSec: c.debounceMaxSec, manualPauseMin: c.manualPauseMin, ownerNumber: c.ownerNumber, timezone: c.timezone })
   const [f, setF] = useState({ ...c.followUp, delaysText: c.followUp.delaysMin.join(', ') })
   const saveFollowUp = () => {
     const delaysMin = f.delaysText.split(',').map((x) => Number(x.trim())).filter((x) => x > 0)
@@ -38,6 +38,9 @@ export default function Settings({ s, save, notify }) {
         </div>
         <div className="row">
           <label className="f">Tu número (para recibir avisos por WhatsApp, opcional)<input value={t.ownerNumber} onChange={(e) => setT({ ...t, ownerNumber: e.target.value.replace(/\D/g, '') })} /></label>
+        </div>
+        <div className="row">
+          <label className="f">Zona horaria (para saludar según la hora, ej: America/Argentina/Buenos_Aires)<input value={t.timezone} onChange={(e) => setT({ ...t, timezone: e.target.value })} /></label>
         </div>
         <button className="primary" onClick={() => save(t)}>Guardar</button>
       </div>
