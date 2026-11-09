@@ -77,3 +77,9 @@ test("respond elige la cantidad con el rng y recorta lo que se pasa del máximo"
   assert.match(prompt, /exactamente 2 mensajes/);
   assert.deepEqual(r.parts.map((p) => p.text), ["hola", "amor que haces nada"]);
 });
+
+test("el prompt aclara que de los ejemplos se copia el estilo, no el contenido", () => {
+  const p = buildSystemPrompt({ corpus, lexicon, history: [{ role: "user", content: "Buenas noches" }], rng: () => 0.5 });
+  assert.match(p, /copiá solo el tono y la forma/i);
+  assert.match(p, /Nunca copies de los ejemplos hechos, personas, días, horarios/);
+});
