@@ -69,7 +69,7 @@ test("cada contacto tiene su propio buffer", async () => {
   s.buffer.add("111", msg("a"), "j1");
   s.buffer.add("222", msg("b"), "j2");
   assert.equal(s.timers.size, 2);
-  for (const [id, t] of [...s.timers]) { s.timers.delete(id); await t.fn(); }
+  for (const [id, t] of Array.from(s.timers)) { s.timers.delete(id); await t.fn(); }
   assert.deepEqual(s.delivered.map((d) => [d.number, d.texts]), [["111", ["a"]], ["222", ["b"]]]);
 });
 
