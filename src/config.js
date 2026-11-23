@@ -30,6 +30,13 @@ export const DEFAULTS = {
     delaysMin: [20, 120, 360], // espera antes de cada intento (el último valor se repite)
     quietHours: { enabled: true, from: "00:00", to: "08:00" },
   },
+  // Desconocidos: quien escribe sin estar en Contactos ni en la agenda cae en una bandeja y vos decidís
+  // si se le manda UNA respuesta predeterminada (fija, o generada por el asistente de bienvenida).
+  unknownInbox: {
+    enabled: true,
+    mode: "fixed", // "fixed" | "ai"
+    fixedText: "Hola! Ahora no puedo contestar, te escribo apenas pueda.",
+  },
   sensitiveTopics: [
     { id: "bot", label: "Preguntan si soy un bot", enabled: true, keywords: ["bot", "inteligencia artificial", "chatgpt", "robot", "sos una ia", "eres una ia"] },
     { id: "dinero", label: "Dinero", enabled: true, keywords: ["plata", "transferencia", "prestame", "préstamo", "deuda", "pagar", "cbu", "alias"] },
@@ -47,6 +54,7 @@ function merge(base, patch = {}) {
     guard: { ...base.guard, ...(patch.guard || {}) },
     burst: { ...base.burst, ...(patch.burst || {}) },
     typing: { ...base.typing, ...(patch.typing || {}) },
+    unknownInbox: { ...base.unknownInbox, ...(patch.unknownInbox || {}) },
     followUp: { ...base.followUp, ...(patch.followUp || {}), quietHours: { ...base.followUp.quietHours, ...(patch.followUp?.quietHours || {}) } },
   };
 }

@@ -4,7 +4,7 @@ import AllowWords from '../components/AllowWords'
 
 const KIND = { in: 'ella', out: 'enviado', dry: 'simulado', alert: 'alerta', info: 'info', error: 'error' }
 
-export default function Panel({ s, save, notify }) {
+export default function Panel({ s, save, notify, applyConfig }) {
   const c = s.config
   const dry = c.dryRun
   return (
@@ -43,7 +43,7 @@ export default function Panel({ s, save, notify }) {
         {c.contacts.filter((x) => x.paused).map((x) => (
           <div className="big" key={x.number}>
             <div><h2>{x.name || x.number} está en pausa</h2><p className="hint" style={{ margin: 0 }}>Se pausó por un tema sensible. Respondé vos y reactivalo cuando quieras.</p></div>
-            <button className="primary" onClick={() => api(`/contacts/${x.number}/paused`, 'POST', { paused: false }).then(() => notify('Reactivado'))}>Reactivar</button>
+            <button className="primary" onClick={() => api(`/contacts/${x.number}/paused`, 'POST', { paused: false }).then((cfg) => { applyConfig(cfg); notify('Reactivado') })}>Reactivar</button>
           </div>
         ))}
       </div>

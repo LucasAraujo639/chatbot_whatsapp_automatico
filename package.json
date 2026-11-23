@@ -7,7 +7,8 @@
     "test": "node --test test/*.test.js",
     "start": "node src/server.js",
     "dev": "concurrently -n api,web \"node --watch-path=src src/server.js\" \"npm --prefix web run dev\"",
-    "build": "npm --prefix web run build"
+    "build": "npm --prefix web run build",
+    "reset:inbox": "node scripts/reset-inbox.js"
   },
   "keywords": [],
   "type": "module",
