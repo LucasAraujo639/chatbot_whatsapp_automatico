@@ -53,8 +53,10 @@ button:disabled { opacity: .5; cursor: default; }
 .bubble.bot { align-self: flex-start; background: var(--card); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
 .bubble.system { align-self: center; max-width: 90%; font-size: 13px; color: var(--muted); text-align: center; }
 .bubble.typing { color: var(--muted); font-style: italic; }
+.one-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60ch; }
 .chat-input { margin-bottom: 0; flex-wrap: nowrap; }
 .quote { font-size: 12px; color: var(--muted); border-left: 3px solid var(--accent); padding: 1px 8px; margin-bottom: 4px; background: color-mix(in srgb, var(--accent) 8%, transparent); border-radius: 4px; }
 .check.ok { color: var(--accent); } .check.warn { color: var(--warn); } .check.bad { color: var(--danger); }
 .allow { display: inline-flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
 .allow button { font-size: 12px; padding: 2px 8px; }
+.badge { display: inline-block; min-width: 18px; margin-left: 6px; padding: 0 6px; border-radius: 999px; background: var(--danger); color: #fff; font-size: 11px; line-height: 18px; text-align: center; }

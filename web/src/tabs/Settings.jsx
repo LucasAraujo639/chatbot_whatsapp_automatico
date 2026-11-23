@@ -100,7 +100,8 @@ export default function Settings({ s, save, notify }) {
 
       <div className="card">
         <h2>Sesión de WhatsApp</h2>
-        <p className="hint">Si querés vincular otro número, cerrá la sesión y escaneá un QR nuevo.</p>
+        <p className="hint">Si se desconectó, probá primero "Reconectar": usa la sesión guardada y no pide QR. Cerrá la sesión solo para vincular otro número.</p>
+        <button onClick={() => api('/reconnect', 'POST').then(() => notify('Reconectando…'))}>Reconectar</button>{' '}
         <button className="danger" onClick={() => confirm('¿Cerrar la sesión de WhatsApp?') && api('/logout', 'POST').then(() => notify('Sesión cerrada'))}>Cerrar sesión</button>
       </div>
     </>

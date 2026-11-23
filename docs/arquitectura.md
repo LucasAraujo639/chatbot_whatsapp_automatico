@@ -5,12 +5,14 @@ Este documento explica cómo funciona el bot por dentro. Para una visión genera
 ## Vista general
 
 ```
-WhatsApp ──► bot.js ──► responder.js ──► llm.js ──► modelo (API OpenAI-compatible)
-   ▲           │              │
-   │           │              └─ style.js, lexicon.js, allowlist.js, topics.js
-   │           ▼
-   └──── sendParts()     followup.js (seguimientos)
-                         pacing.js   (ritmo de envío)
+WhatsApp ◄─► adapters/whatsapp.js ──► conversation.js ──► responder.js ──► llm.js ──► modelo
+            (adaptador: Messenger)      (núcleo)    │            │
+                                          │         │            └─ style.js, lexicon.js, allowlist.js, topics.js
+data/history.json ◄─ adapters/history-file.js       ├─ message-buffer.js (debounce, pausa manual)
+            (adaptador: HistoryStore)               ├─ followup.js       (seguimientos)
+                                                    └─ pacing.js         (ritmo de envío)
+
+bot.js = composition root: conecta núcleo + adaptadores y expone estado/eventos al panel.
 
 Panel web (web/) ──► Express (server.js) ──► config.js / bot.js / routes/
 ```
@@ -23,7 +25,7 @@ Hay dos caras que comparten el mismo proceso Node:
 ## Flujo de un mensaje entrante
 
 1. **Recepción** (`src/bot.js`, evento `messages.upsert`). Solo se procesan mensajes de tipo `notify`. Se descartan grupos, estados y mensajes sin texto.
-2. **Identificación del contacto** (`handle`). Se resuelve el número de teléfono, incluido el caso en que WhatsApp entrega un ID interno (`@lid`). Si el número no está en `contacts`, se registra una vez y se ignora.
+2. **Identificación del contacto** (`handle`). Se resuelve el número de teléfono, incluido el caso en que WhatsApp entrega un ID interno (`@lid`). Si el número no está en `contacts`, el núcleo lo entrega al puerto `onUnknown` (ver [Desconocidos](#desconocidos)).
 3. **Mensajes del dueño**. Si el mensaje lo escribió el dueño a mano (no el bot), se marca una pausa de `manualPauseMin` minutos para ese contacto y se cancelan los seguimientos. Los mensajes viejos reentregados al reconectar se ignoran.
 4. **Debounce**. Los mensajes de la misma persona se acumulan en un buffer. El procesamiento arranca `debounceMinSec`–`debounceMaxSec` segundos después del último mensaje.
 5. **Flush** (`flush`). Se revisan las condiciones: contacto habilitado, bot no pausado, sin pausa manual activa. Si hay una pausa manual, los mensajes se reencolan.
@@ -32,12 +34,27 @@ Hay dos caras que comparten el mismo proceso Node:
 8. **Envío** (`sendParts`). Cada parte se envía con un tiempo de "escribiendo…" aleatorio (`typing`). Si `dryRun` está activo, solo se registra en el log.
 9. **Seguimiento**. Al terminar, `followUps.arm` programa un seguimiento. Si la otra persona no contesta, el scheduler puede escribir de nuevo, hasta `maxAttempts` veces, respetando `quietHours`.
 
+## Desconocidos
+
+Quien escribe sin estar en `contacts` ni en la agenda del teléfono cae en la bandeja (`unknown-service.js` + `unknown-inbox.js`, persistida en `data/unknown-inbox.json`, con los últimos 10 mensajes). No se le contesta nada hasta que el dueño decide en la pestaña **Desconocidos**:
+
+- **Aceptar**: se arma un borrador (`greeter.js`) — el texto fijo de `unknownInbox.fixedText` o, con `unknownInbox.mode = "ai"`, uno generado por el asistente de bienvenida — el dueño lo edita y se envía **una sola vez**. Queda `replied`; si la persona vuelve a escribir, contesta el dueño. Respeta `dryRun`.
+- **Rechazar**: no se envía nada. Desde ahí se puede guardar el número en la agenda del teléfono (`sock.addOrEditContact` de Baileys).
+- Si el dueño le escribe a mano a un pendiente, pasa a `replied`.
+
+La agenda se conoce por los eventos `contacts.upsert`/`contacts.update` de Baileys (contactos con `name`) y se guarda en `data/address-book.json`. Si todavía no sincronizó, un agendado puede aparecer como desconocido.
+
+El **asistente de bienvenida** no usa el corpus del chat exportado: su prompt sale de `data/greeter.json` (instrucciones libres + reglas "si te dicen X → respondé Y"), que se edita y prueba desde el panel.
+
 ## Módulos
 
 | Módulo | Responsabilidad |
 |--------|-----------------|
 | `server.js` | API Express, panel estático y arranque del bot. |
-| `bot.js` | Conexión con WhatsApp, buffers de mensajes, envío y reconexión. |
+| `bot.js` | Composition root: arma el núcleo con sus adaptadores y expone estado y eventos al panel. |
+| `conversation.js` | Núcleo independiente de la plataforma: lote de mensajes, temas sensibles, respuesta, envío, seguimientos y pausas. Define los puertos `Messenger` y `HistoryStore`. |
+| `adapters/whatsapp.js` | Adaptador de WhatsApp (Baileys): conexión, reconexión, traducción de mensajes entrantes y envío. |
+| `adapters/history-file.js` | Adaptador de historial en `data/history.json`. |
 | `config.js` | Carga, fusión con valores por defecto y guardado de `data/config.json`. |
 | `responder.js` | Armado del prompt, llamada al modelo y control de fidelidad (guard). |
 | `llm.js` | Cliente HTTP para cualquier API compatible con OpenAI. |
@@ -53,6 +70,9 @@ Hay dos caras que comparten el mismo proceso Node:
 | `simulator.js` / `routes/simulate.js` | Simula conversaciones y seguimientos sin enviar nada por WhatsApp. |
 | `routes/contacts.js` | Verificación de que un número existe en WhatsApp. |
 | `routes/vocabulary.js` | Alta y baja de palabras permitidas. |
+| `unknown-inbox.js` / `unknown-service.js` | Bandeja de desconocidos y decisiones (aceptar, rechazar, agendar). |
+| `greeter.js` | Asistente de bienvenida para desconocidos: prompt propio con instrucciones y reglas. |
+| `routes/unknown.js` | API de la bandeja y del asistente de bienvenida. |
 
 ## Decisiones de diseño
 
@@ -62,10 +82,11 @@ Hay dos caras que comparten el mismo proceso Node:
 - **Configuración editable en caliente**. `updateConfig` escribe el JSON y emite un evento para que el panel se actualice.
 - **Respuestas en partes**. El modelo puede devolver varios mensajes. `limitParts` respeta el máximo de `burst` uniendo el excedente en el último, para no perder contenido.
 - **Reconexión**. Si la conexión se cae, el bot reintenta con espera creciente (`scheduleReconnect`).
+- **Puertos y adaptadores**. El núcleo (`conversation.js`) no sabe qué plataforma usa: recibe mensajes neutros (`receive`) y habla hacia afuera por los puertos `Messenger` y `HistoryStore`. Para sumar Telegram, Discord o una API REST se escribe un adaptador nuevo en `src/adapters/` que implemente `Messenger` y llame a `receive`, y se conecta en `bot.js`.
 
 ## Tests
 
-Hay 10 archivos en `test/` que cubren la lógica pura: léxico, teléfonos, ritmo, seguimientos, respuestas, temas, intenciones y simulador. No hay tests de `bot.js` ni de las rutas HTTP, porque dependen de WhatsApp y de la red.
+Hay 10 archivos en `test/` que cubren la lógica pura: léxico, teléfonos, ritmo, seguimientos, respuestas, temas, intenciones y simulador. `test/conversation.test.js` prueba el flujo completo del núcleo con adaptadores en memoria. No hay tests de `adapters/whatsapp.js`, porque depende de WhatsApp y de la red.
 
 ## Limitaciones conocidas
 
