@@ -37,6 +37,7 @@ const unknown = createUnknownService({
   draft: (texts) => draftGreeting(texts),
   isInAddressBook: whatsapp.isInAddressBook,
   saveToAddressBook: whatsapp.saveToAddressBook,
+  fetchProfile: whatsapp.fetchProfile,
   log,
   onChange: () => events.emit("update"),
 });

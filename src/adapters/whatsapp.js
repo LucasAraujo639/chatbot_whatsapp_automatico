@@ -20,6 +20,7 @@ const MAX_REPLACED_RETRIES = 3;
 const CONTACTS_COLLECTION = "critical_unblock_low";
 const BOOK_SYNC_MIN_GAP_MS = 60000;     // como mucho un snapshot por minuto
 const BOOK_SYNC_FLUSH_MS = 1500;        // Baileys entrega los eventos del resync con un pequeño retraso
+const PROFILE_TIMEOUT_MS = 8000;        // si WhatsApp no contesta un dato del perfil, se sigue sin él
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export class NotConnectedError extends Error {
@@ -275,8 +276,35 @@ export function createWhatsAppAdapter({
     addressBook.update([{ id: jid, name: fullName }]);
   }
 
+  // Perfil público para reconocer a alguien: foto, "info" y datos de empresa. Cada dato puede faltar
+  // (privacidad, cuenta común, sin foto): lo que falla queda en null sin romper el resto.
+  async function fetchProfile(jid) {
+    if (connection !== "open" || !sock) throw new NotConnectedError();
+    const s = sock;
+    const quiet = (p) => Promise.race([p, sleep(PROFILE_TIMEOUT_MS).then(() => null)]).catch(() => null);
+    const [photoUrl, statuses, business] = await Promise.all([
+      quiet(s.profilePictureUrl(jid, "image")),
+      quiet(s.fetchStatus(jid)),
+      quiet(s.getBusinessProfile(jid)),
+    ]);
+    const st = statuses?.[0]?.status;
+    const setAt = st?.setAt instanceof Date && st.setAt.getTime() > 0 ? st.setAt.getTime() : null;
+    return {
+      photoUrl: photoUrl || null,
+      about: st?.status || null,
+      aboutSetAt: st?.status ? setAt : null,
+      business: business ? {
+        description: business.description || null,
+        category: business.category || null,
+        email: business.email || null,
+        website: business.website?.[0] || null,
+        address: business.address || null,
+      } : null,
+    };
+  }
+
   return {
-    start, reconnect, stop, logout, verifyNumber, saveToAddressBook, messenger,
+    start, reconnect, stop, logout, verifyNumber, saveToAddressBook, fetchProfile, messenger,
     isInAddressBook, syncAddressBook,
     removeFromAddressBook: (phones) => addressBook.remove(phones),
   };

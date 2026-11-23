@@ -22,9 +22,11 @@ export function createUnknownRouter({ service, greeter, test, onChange = () => {
   }));
 
   router.get("/", handle(() => ({ items: service.list() })));
+  router.get("/:id/profile", handle((req) => service.profile(req.params.id)));
   router.post("/:id/preview", handle(async (req) => ({ text: await service.preview(req.params.id) })));
   router.post("/:id/accept", handle((req) => service.accept(req.params.id, req.body?.text)));
   router.post("/:id/reject", handle((req) => service.reject(req.params.id)));
+  router.post("/:id/done", handle((req) => service.setDone(req.params.id, req.body?.done !== false)));
   router.post("/:id/save-contact", handle((req) => service.saveContact(req.params.id, req.body?.name)));
   router.delete("/:id", handle((req) => { service.remove(req.params.id); return { ok: true }; }));
 

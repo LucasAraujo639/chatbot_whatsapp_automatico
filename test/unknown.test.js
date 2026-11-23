@@ -70,21 +70,22 @@ test("modo fijo no llama al modelo; modo IA sí, con el último mensaje", async 
 
 // ---------- servicio ----------
 
-function setup({ cfg = {}, inAgenda = false, connected = true } = {}) {
+function setup({ cfg = {}, inAgenda = false, connected = true, profile = async () => ({ photoUrl: "https://foto", about: "Disponible", aboutSetAt: null, business: null }) } = {}) {
   const config = { dryRun: false, typing: { minSec: 0, maxSec: 0 }, unknownInbox: { enabled: true, mode: "fixed", fixedText: "hola!" }, ...cfg };
-  const sent = [], logs = [], saved = [];
+  const sent = [], logs = [], saved = [], profileCalls = [];
   let changes = 0;
   const service = createUnknownService({
     getConfig: () => config,
     inbox: createUnknownInbox(tmpFile("inbox.json")),
-    messenger: { isConnected: () => connected, showTyping: async () => {}, send: async (address, text) => { sent.push({ address, text }); } },
+    messenger: { isConnected: () => connected, addressFor: (n) => `${n}@pn`, showTyping: async () => {}, send: async (address, text) => { sent.push({ address, text }); } },
     draft: async (texts) => `borrador: ${texts.join(" | ")}`,
     isInAddressBook: () => inAgenda,
     saveToAddressBook: async (number, name) => { saved.push({ number, name }); },
+    fetchProfile: async (address) => { profileCalls.push(address); return profile(address); },
     log: (kind, text) => logs.push({ kind, text }),
     onChange: () => { changes++; },
   });
-  return { service, sent, logs, saved, get changes() { return changes; } };
+  return { service, sent, logs, saved, profileCalls, get changes() { return changes; } };
 }
 
 test("un desconocido queda pendiente y no se le contesta solo", async () => {
@@ -140,6 +141,52 @@ test("rechazar no envía y permite agendar con nombre", async () => {
   await s.service.saveContact(NUMBER, "Juan Pérez");
   assert.deepEqual(s.saved, [{ number: NUMBER, name: "Juan Pérez" }]);
   assert.equal(s.service.list()[0].status, "saved");
+});
+
+test("se puede agendar directo desde pendientes, sin aceptar ni rechazar", async () => {
+  const s = setup();
+  await s.service.receive(msg("hola"));
+  await s.service.saveContact(NUMBER, "Juan");
+  assert.deepEqual(s.saved, [{ number: NUMBER, name: "Juan" }]);
+  assert.equal(s.service.list()[0].status, "saved");
+  assert.equal(s.sent.length, 0);
+});
+
+test("perfil: trae foto e info por el número, suma lo que ya se sabe y se cachea", async () => {
+  const s = setup();
+  await s.service.receive(msg("hola"));
+  const p = await s.service.profile(NUMBER);
+  assert.equal(p.photoUrl, "https://foto");
+  assert.equal(p.about, "Disponible");
+  assert.equal(p.name, "Juan");
+  assert.equal(p.number, NUMBER);
+  await s.service.profile(NUMBER);
+  assert.deepEqual(s.profileCalls, [`${NUMBER}@pn`]);
+  await assert.rejects(s.service.profile("nadie"), /No encontré/);
+});
+
+test("perfil: sin número real se pide por la dirección del chat", async () => {
+  const s = setup();
+  await s.service.receive(msg("hola", { phones: [], address: "1@lid", senderLabel: "1 (ID interno)" }));
+  await s.service.profile("1@lid");
+  assert.deepEqual(s.profileCalls, ["1@lid"]);
+});
+
+test("listo: un respondido se da por terminado, no pide respuesta ni se puede quitar hasta desmarcarlo", async () => {
+  const s = setup();
+  await s.service.receive(msg("hola"));
+  assert.throws(() => s.service.setDone(NUMBER, true), /ya respondido/); // pendiente todavía
+  await s.service.accept(NUMBER, "buenas");
+  assert.equal(s.service.setDone(NUMBER, true).status, "done");
+  await s.service.receive(msg("otra cosa")); // vuelve a escribir: se guarda pero sigue listo
+  assert.equal(s.service.list()[0].status, "done");
+  assert.equal(s.service.list()[0].messages.at(-1).text, "otra cosa");
+  await assert.rejects(s.service.accept(NUMBER, "hey"), /listo/);
+  assert.throws(() => s.service.remove(NUMBER), /desmarcalo/);
+  assert.equal(s.service.setDone(NUMBER, false).status, "replied");
+  assert.throws(() => s.service.setDone(NUMBER, false), /no está marcado/);
+  s.service.remove(NUMBER);
+  assert.equal(s.service.list().length, 0);
 });
 
 test("no se puede agendar un chat sin número real", async () => {
@@ -216,6 +263,9 @@ test("rutas: errores de la bandeja se traducen a status HTTP", async () => {
     assert.equal((await call(`/${NUMBER}/accept`, "POST", { text: "" }))[0], 400);
     assert.deepEqual(await call(`/${NUMBER}/preview`), [200, { text: "borrador: hola" }]);
     assert.equal((await call(`/${NUMBER}/accept`, "POST", { text: "hey" }))[1].status, "replied");
+    assert.equal((await call(`/${NUMBER}/done`, "POST", { done: true }))[1].status, "done");
+    assert.equal((await call(`/${NUMBER}`, "DELETE"))[0], 409);
+    assert.equal((await call(`/${NUMBER}/done`, "POST", { done: false }))[1].status, "replied");
     assert.deepEqual(await call("/greeter/test", "POST", { text: "hola" }), [200, { reply: "re: hola" }]);
     assert.equal((await call("/", "GET"))[1].items.length, 1);
   } finally { await new Promise((r) => srv.close(r)); }

@@ -5,7 +5,8 @@ import path from "node:path";
 
 export const EXTRA_MESSAGES = 5;  // después del primero, cuántos mensajes más se le guardan a cada desconocido
 export const KEPT_MESSAGES = 30;  // tope de seguridad de la charla guardada (mensajes de él + tuyos)
-export const STATUSES = ["pending", "replied", "rejected", "saved"];
+// "done": ya respondido y dado por terminado; si vuelve a escribir se guarda, pero no vuelve a pedir respuesta.
+export const STATUSES = ["pending", "replied", "done", "rejected", "saved"];
 
 /**
  * @typedef {object} UnknownEntry
@@ -14,7 +15,7 @@ export const STATUSES = ["pending", "replied", "rejected", "saved"];
  * @property {string} label         Cómo mostrarlo.
  * @property {unknown} address      Dónde contestarle.
  * @property {string} pushName      Nombre que la persona puso en su perfil.
- * @property {"pending"|"replied"|"rejected"|"saved"} status
+ * @property {"pending"|"replied"|"done"|"rejected"|"saved"} status
  * @property {Array<{ text: string, at: number, from: "them"|"me" }>} messages  La charla (sin `from` = de él, datos viejos).
  * @property {number} firstAt
  * @property {number} lastAt

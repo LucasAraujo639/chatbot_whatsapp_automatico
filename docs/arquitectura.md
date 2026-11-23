@@ -39,7 +39,11 @@ Hay dos caras que comparten el mismo proceso Node:
 Quien escribe sin estar en `contacts` ni en la agenda del teléfono cae en la bandeja (`unknown-service.js` + `unknown-inbox.js`, persistida en `data/unknown-inbox.json`, con los últimos 10 mensajes). No se le contesta nada hasta que el dueño decide en la pestaña **Desconocidos**:
 
 - **Aceptar**: se arma un borrador (`greeter.js`) — el texto fijo de `unknownInbox.fixedText` o, con `unknownInbox.mode = "ai"`, uno generado por el asistente de bienvenida — el dueño lo edita y se envía **una sola vez**. Queda `replied`; si la persona vuelve a escribir, contesta el dueño. Respeta `dryRun`.
-- **Rechazar**: no se envía nada. Desde ahí se puede guardar el número en la agenda del teléfono (`sock.addOrEditContact` de Baileys).
+- **Rechazar**: no se envía nada.
+- **Listo** (checkbox en un respondido): lo da por terminado y pasa a la pestaña **Listos**, compacto. Si vuelve a escribir el mensaje se guarda pero no pide respuesta, y no se puede quitar de la bandeja hasta desmarcarlo (vuelve a respondido).
+- **Agendar** (desde pendientes, respondidos o rechazados): guarda el número en la agenda del teléfono (`sock.addOrEditContact` de Baileys).
+
+Para reconocer a la persona, cada tarjeta muestra su foto de perfil, la "info" y, si es una cuenta de empresa, los datos del perfil de negocio (`profilePictureUrl`, `fetchStatus`, `getBusinessProfile`). Se piden por `GET /api/unknown/:id/profile` y el servidor los cachea 10 minutos; lo que la persona no comparte por privacidad simplemente no aparece.
 - Si el dueño le escribe a mano a un pendiente, pasa a `replied`.
 
 La agenda se conoce por los eventos `contacts.upsert`/`contacts.update` de Baileys (contactos con `name`) y se guarda en `data/address-book.json`. Si todavía no sincronizó, un agendado puede aparecer como desconocido.

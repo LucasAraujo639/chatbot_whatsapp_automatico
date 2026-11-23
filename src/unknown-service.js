@@ -3,6 +3,8 @@
 import { typingDelayMs } from "./pacing.js";
 import { unanswered, EXTRA_MESSAGES } from "./unknown-inbox.js";
 
+const PROFILE_TTL_MS = 10 * 60 * 1000;
+
 export class InboxError extends Error {
   constructor(message, status = 400) { super(message); this.status = status; }
 }
@@ -14,6 +16,8 @@ export function createUnknownService({
   draft,                          // async (texts: string[]) => string
   isInAddressBook = () => false,  // (phones: string[]) => boolean | Promise<boolean>
   saveToAddressBook,              // async (number, name) => void
+  fetchProfile = async () => null, // async (address) => { photoUrl, about, aboutSetAt, business } | null
+  now = Date.now,
   log = () => {},
   onChange = () => {},
 }) {
@@ -74,6 +78,7 @@ export function createUnknownService({
     const body = String(text ?? "").trim();
     if (!body) throw new InboxError("El mensaje está vacío");
     if (entry.status === "saved") throw new InboxError("Ese chat ya fue resuelto", 409);
+    if (entry.status === "done") throw new InboxError("Ese chat está marcado como listo; desmarcalo para contestar", 409);
     if (entry.status === "replied" && !unanswered(entry).length) throw new InboxError("No hay mensajes nuevos para contestar", 409);
     const cfg = getConfig();
     if (cfg.dryRun) {
@@ -103,11 +108,32 @@ export function createUnknownService({
     return setStatus(id, "saved");
   }
 
+  // Perfil de WhatsApp para reconocerlo antes de decidir. Se cachea un rato: la URL de la foto vence
+  // y no tiene sentido pedirlo cada vez que se redibuja el panel.
+  const profiles = new Map();
+  async function profile(id) {
+    const entry = find(id);
+    const hit = profiles.get(id);
+    if (hit && now() - hit.at < PROFILE_TTL_MS) return hit.data;
+    const target = entry.number ? messenger.addressFor(entry.number) : entry.address;
+    const data = { ...(await fetchProfile(target)), name: entry.pushName || null, number: entry.number, firstAt: entry.firstAt };
+    profiles.set(id, { at: now(), data });
+    return data;
+  }
+
+  /** Listo / no listo: solo para chats ya respondidos. Listo = no vuelve a pedir respuesta ni se puede quitar. */
+  function setDone(id, done) {
+    const entry = find(id);
+    if (done && entry.status !== "replied") throw new InboxError("Solo se puede marcar como listo un chat ya respondido", 409);
+    if (!done && entry.status !== "done") throw new InboxError("Ese chat no está marcado como listo", 409);
+    return setStatus(id, done ? "done" : "replied");
+  }
+
   function remove(id) {
-    find(id);
+    if (find(id).status === "done") throw new InboxError("Está marcado como listo: desmarcalo para poder quitarlo", 409);
     inbox.remove(id);
     onChange();
   }
 
-  return { receive, preview, accept, reject, saveContact, remove, list: () => inbox.list() };
+  return { receive, preview, accept, reject, saveContact, profile, setDone, remove, list: () => inbox.list() };
 }
