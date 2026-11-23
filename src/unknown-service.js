@@ -124,6 +124,7 @@ export function createUnknownService({
   /** Listo / no listo: solo para chats ya respondidos. Listo = no vuelve a pedir respuesta ni se puede quitar. */
   function setDone(id, done) {
     const entry = find(id);
+    if (entry.status === (done ? "done" : "replied")) return entry; // ya estaba así (ej. doble clic o panel desactualizado)
     if (done && entry.status !== "replied") throw new InboxError("Solo se puede marcar como listo un chat ya respondido", 409);
     if (!done && entry.status !== "done") throw new InboxError("Ese chat no está marcado como listo", 409);
     return setStatus(id, done ? "done" : "replied");

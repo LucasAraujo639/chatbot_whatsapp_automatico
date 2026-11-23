@@ -183,8 +183,9 @@ test("listo: un respondido se da por terminado, no pide respuesta ni se puede qu
   assert.equal(s.service.list()[0].messages.at(-1).text, "otra cosa");
   await assert.rejects(s.service.accept(NUMBER, "hey"), /listo/);
   assert.throws(() => s.service.remove(NUMBER), /desmarcalo/);
+  assert.equal(s.service.setDone(NUMBER, true).status, "done"); // repetir no falla (panel desactualizado)
   assert.equal(s.service.setDone(NUMBER, false).status, "replied");
-  assert.throws(() => s.service.setDone(NUMBER, false), /no está marcado/);
+  assert.equal(s.service.setDone(NUMBER, false).status, "replied");
   s.service.remove(NUMBER);
   assert.equal(s.service.list().length, 0);
 });
