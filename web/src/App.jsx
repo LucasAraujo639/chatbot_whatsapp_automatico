@@ -33,18 +33,19 @@ export default function App() {
     return () => { closed = true; clearTimeout(retry); es.close() }
   }, [])
 
+  const applyConfig = (config) => setS((prev) => ({ ...prev, config }))
   const notify = (m) => { setToast(m); setTimeout(() => setToast(''), 2500) }
   const save = async (patch, msg = 'Guardado') => {
     try {
       const config = await api('/config', 'PUT', patch)
       // No depender solo del SSE: si el stream se cortó, el botón quedaría desactualizado.
-      setS((prev) => ({ ...prev, config }))
+      applyConfig(config)
       notify(msg)
     } catch (e) { notify('Error: ' + e.message) }
   }
 
   if (!s) return <div className="wrap">Conectando con el servidor… ¿está corriendo <code>npm run dev</code>?</div>
-  const props = { s, save, notify }
+  const props = { s, save, notify, applyConfig }
   const pending = (s.unknown || []).filter((e) => e.status === 'pending').length
   const conn = { open: ['ok', 'WhatsApp conectado'], qr: ['warn', 'Esperando QR'], connecting: ['warn', 'Conectando…'], closed: ['bad', 'Desconectado'] }[s.connection]
 

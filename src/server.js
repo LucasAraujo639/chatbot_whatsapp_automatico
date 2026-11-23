@@ -34,7 +34,7 @@ app.put("/api/config", (req, res) => {
   events.emit("update");
   res.json(publicCfg());
 });
-app.post("/api/contacts/:number/paused", (req, res) => { setContactPaused(req.params.number, !!req.body.paused); res.json({ ok: true }); });
+app.post("/api/contacts/:number/paused", (req, res) => { setContactPaused(req.params.number, !!req.body.paused); res.json(publicCfg()); });
 app.post("/api/logout", async (_, res) => { await logoutBot(); res.json({ ok: true }); });
 app.post("/api/reconnect", async (_, res) => { await reconnectBot(); res.json({ ok: true }); });
 
