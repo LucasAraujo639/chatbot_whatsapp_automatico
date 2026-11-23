@@ -22,7 +22,7 @@ const shuffle = (arr, rng) => arr.map((v) => [rng(), v]).sort((a, b) => a[0] - b
 const asExample = (me) => me.join("\n---\n");
 
 // Prompt puro (sin I/O) para poder testearlo. Las reglas van al final, donde más pesan para un modelo chico.
-export function buildSystemPrompt({ name = DEFAULT_OWNER_NAME, about = "", profile = null, corpus = null, lexicon = null, allowlist = [], history = [], burstTarget = null, rng = Math.random }) {
+export function buildSystemPrompt({ now = new Date(), name = DEFAULT_OWNER_NAME, about = "", profile = null, corpus = null, lexicon = null, allowlist = [], history = [], burstTarget = null, rng = Math.random }) {
   const incoming = lastUserText(history);
   const intent = incoming ? detectIntent(incoming) : null;
 
@@ -46,6 +46,7 @@ export function buildSystemPrompt({ name = DEFAULT_OWNER_NAME, about = "", profi
   const s = profile?.stats;
 
   return `Sos ${name} respondiendo mensajes de WhatsApp. Escribí EXACTAMENTE como ${name}: mismo tono, largo, muletillas, puntuación y emojis.
+${timeLine(now)}
 ${s ? `Estadísticas de su estilo: largo medio ${s.avgLen} caracteres, emojis frecuentes: ${s.topEmoji || "ninguno"}, ${s.lowercasePct}% de sus mensajes van todo en minúscula.` : ""}
 ${lexicon?.top?.length ? `\nVocabulario real de ${name} (palabras y apodos que usa; no uses otros): ${[...lexicon.top, ...allowlist].join(", ")}\n` : ""}
 Datos sobre ${name}:
@@ -62,13 +63,28 @@ REGLAS (en orden de prioridad):
 5. Mismo largo y forma que los ejemplos: respuestas cortas y naturales, como chat real. Nunca copies de los ejemplos hechos, personas, días, horarios, tiempos ni anécdotas: pasaron en otra charla y acá no tienen sentido.
 6. Sé coherente con lo que ${name} YA dijo en esta conversación (los mensajes "assistant" son tuyos): si dijiste que estabas comiendo, estás comiendo; nunca te contradigas ni cambies la historia.
 7. ${leaving ? "La otra persona se está despidiendo: podés despedirte." : 'La otra persona NO dijo que se va a dormir ni que se despide: prohibido despedirte, decir "que descanses", "buenas noches", "andá a dormir" o similares.'}
-8. Nunca confirmes planes, citas, horarios ni dinero.
-9. No digas que sos una IA ni rompas el personaje; devolvé solo el texto del mensaje, sin comillas ni explicaciones.
+8. Lo que digas tiene que tener sentido para la hora actual: de noche no digas que te acabás de levantar ni que vas a desayunar; de mañana no digas que te vas a dormir.
+9. Nunca confirmes planes, citas, horarios ni dinero.
+10. No digas que sos una IA ni rompas el personaje; devolvé solo el texto del mensaje, sin comillas ni explicaciones.
 
 Formato de respuesta:
 ${burstInstruction(burstTarget)}
 - Si la otra persona mandó varios mensajes numerados ([1], [2]...), podés empezar un mensaje con su número entre corchetes, por ejemplo "[2] jaja sí", para responderle puntualmente a ese. Hacelo solo cuando aporte (a veces sí, a veces no); el número va únicamente al principio del mensaje.`;
 }
+
+// Momento del día en la hora local del servidor (la misma del teléfono del dueño).
+export function partOfDay(hour) {
+  if (hour >= 6 && hour < 12) return "mañana";
+  if (hour >= 12 && hour < 14) return "mediodía";
+  if (hour >= 14 && hour < 20) return "tarde";
+  if (hour >= 20) return "noche";
+  return "madrugada";
+}
+const timeLine = (now) => {
+  const fecha = now.toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" });
+  const hora = now.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hour12: false });
+  return `Ahora es ${fecha}, ${hora} (${partOfDay(now.getHours())}).`;
+};
 
 const burstInstruction = (n) =>
   n === 1

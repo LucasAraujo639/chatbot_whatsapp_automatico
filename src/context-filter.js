@@ -17,6 +17,8 @@ const RULES = [
   /\b(mi|tu|su) (mama|papa|vieja|viejo|hermanos?|hermanas?|ex|amig[oa]s?|jefe|abuel[oa]s?|prim[oa]s?|ti[oa]s?|novi[oa])\b|\bel papa\b/,
   // Referencias a algo dicho antes ("por lo del…", "solo para eso")
   /\b(lo del|para eso)\b/,
+  // Dependen de la hora del día: "recién me levanto" a las 22 no tiene sentido
+  /\b(me levant\w*|me despert\w*|me acabo de (levantar|despertar)|me dormi|me quede dormid[oa]|desayun\w*|almorz\w*|almuerz\w*|cenando|ceno|cene)\b/,
   // Temas personales o delicados
   /\b(zorras?|pegar|pego|pegarle|besaste|beso a|una cuenta)\b/,
 ];

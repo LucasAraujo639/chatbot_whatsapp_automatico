@@ -30,3 +30,8 @@ const GENERIC = [
 for (const text of GENERIC) {
   test(`isContextual no marca: "${text}"`, () => assert.equal(isContextual(text), false));
 }
+
+test("frases que dependen de la hora del día no sirven como ejemplo", () => {
+  for (const t of ["Recien me levante", "Ya me desperté", "Me voy a desayunar", "estoy cenando"]) assert.equal(isContextual(t), true, t);
+  assert.equal(isContextual("jajaja sos terrible"), false);
+});

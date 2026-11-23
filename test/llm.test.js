@@ -66,3 +66,19 @@ test("listModels lanza error si la API responde con falla", async () => {
     await assert.rejects(listModels(provider), /^Error: 401: no autorizado/);
   });
 });
+
+test("error de red: explica qué pasó en vez de 'fetch failed'", async () => {
+  const refused = () => { throw Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNREFUSED" } }); };
+  await withFetch(refused, async () => {
+    await assert.rejects(listModels({ baseUrl: "http://localhost:11434/v1" }), /No se pudo conectar con http:\/\/localhost:11434\/v1\/models: no hay nada escuchando/);
+  });
+});
+
+test("URL base con espacios se recorta; sin http(s) se rechaza sin llamar", async () => {
+  await withFetch(() => new Response(JSON.stringify({ data: [{ id: "m1" }] })), async (calls) => {
+    assert.deepEqual(await listModels({ baseUrl: "  https://api.example.com/v1/ " }), ["m1"]);
+    assert.equal(calls[0].url, "https://api.example.com/v1/models");
+    await assert.rejects(listModels({ baseUrl: "api.example.com" }), /URL base inválida/);
+    assert.equal(calls.length, 1);
+  });
+});
