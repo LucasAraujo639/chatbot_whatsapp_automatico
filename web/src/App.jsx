@@ -15,15 +15,32 @@ export default function App() {
   const [tab, setTab] = useState('panel')
   const [toast, setToast] = useState('')
 
+  // Canal en vivo con el servidor. Si el servidor se reinicia (ej. `npm run dev` al guardar un archivo), el proxy
+  // de Vite contesta con error y el EventSource se cierra para siempre: el panel quedaba mostrando datos viejos.
+  // Por eso se reabre a mano hasta que vuelva.
   useEffect(() => {
-    const es = new EventSource('/api/events')
-    es.onmessage = (e) => setS(JSON.parse(e.data))
-    return () => es.close()
+    let es, retry, closed = false
+    const open = () => {
+      es = new EventSource('/api/events')
+      es.onmessage = (e) => setS(JSON.parse(e.data))
+      es.onerror = () => {
+        if (es.readyState !== EventSource.CLOSED || closed) return
+        clearTimeout(retry)
+        retry = setTimeout(open, 2000)
+      }
+    }
+    open()
+    return () => { closed = true; clearTimeout(retry); es.close() }
   }, [])
 
   const notify = (m) => { setToast(m); setTimeout(() => setToast(''), 2500) }
   const save = async (patch, msg = 'Guardado') => {
-    try { await api('/config', 'PUT', patch); notify(msg) } catch (e) { notify('Error: ' + e.message) }
+    try {
+      const config = await api('/config', 'PUT', patch)
+      // No depender solo del SSE: si el stream se cortó, el botón quedaría desactualizado.
+      setS((prev) => ({ ...prev, config }))
+      notify(msg)
+    } catch (e) { notify('Error: ' + e.message) }
   }
 
   if (!s) return <div className="wrap">Conectando con el servidor… ¿está corriendo <code>npm run dev</code>?</div>
