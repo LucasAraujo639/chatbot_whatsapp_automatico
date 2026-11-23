@@ -50,7 +50,7 @@ test("dispara tras la espera, escala y respeta maxAttempts", async () => {
   assert.equal(await h.advance(), false); // no hay tercer intento
 });
 
-test("cancel (ella escribió) evita el seguimiento", async () => {
+test("cancel (el contacto escribió) evita el seguimiento", async () => {
   const h = harness();
   h.s.arm("1"); h.s.cancel("1");
   assert.equal(await h.advance(), false);

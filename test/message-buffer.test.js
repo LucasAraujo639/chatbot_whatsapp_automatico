@@ -92,7 +92,7 @@ test("tras un mensaje escrito a mano, no responde y reintenta cuando termina la 
   assert.equal([...s.timers.values()][0].ms, 20 * 60_000 + 1000); // vuelve a intentar un segundo después de que termine
   s.advance(20 * 60_000 + 1000);
   await s.fire();
-  assert.deepEqual(s.delivered, [{ number: NUMBER, texts: ["hola"], jid: "jid" }]); // no se perdió lo que ella escribió
+  assert.deepEqual(s.delivered, [{ number: NUMBER, texts: ["hola"], jid: "jid" }]); // no se perdió lo que el contacto escribió
 });
 
 test("la pausa manual de un contacto no afecta a otro", async () => {

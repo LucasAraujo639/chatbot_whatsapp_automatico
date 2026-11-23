@@ -56,7 +56,7 @@ function setup({ cfg = {}, reply = "hola", blocked = null, connected = true } = 
 
 const incoming = (text, extra = {}) => ({ phones: [NUMBER], address: "chat-1", text, ref: { id: text }, id: `id-${text}`, fromOwner: false, senderLabel: NUMBER, ...extra });
 
-test("junta los mensajes de ella, pide la respuesta y la envía con 'escribiendo…'", async () => {
+test("junta los mensajes del contacto, pide la respuesta y la envía con 'escribiendo…'", async () => {
   const s = setup();
   s.conversation.receive(incoming("hola"));
   s.conversation.receive(incoming("estás?"));
@@ -135,7 +135,7 @@ test("los mensajes de chats fuera de Contactos van al puerto onUnknown (los cono
   assert.deepEqual(unknown.map((m) => m.text), ["quién sos", "yo"]);
 });
 
-test("si ella no contesta, el seguimiento le escribe a la misma dirección", async () => {
+test("si el contacto no contesta, el seguimiento le escribe a la misma dirección", async () => {
   const s = setup({ reply: "che?" });
   s.conversation.receive(incoming("hola"));
   await s.fire();               // respuesta

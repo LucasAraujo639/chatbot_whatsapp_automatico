@@ -15,15 +15,32 @@ export function detectIntent(text) {
   return INTENTS.find((i) => i.test.test(n)) ?? null;
 }
 
+// Despedidas / "andá a dormir": solo tienen sentido si el contacto dijo que se va.
+const FAREWELL = /descans|dormi(?:te|lona|lon|r)?\b|buenas? noches?|dulces suenos|que suenes|hasta manana|chau/;
+export const isFarewell = (text) => FAREWELL.test(normalize(text ?? ""));
+
+// ¿El contacto dijo en sus últimos mensajes que se va a dormir / se despide?
+export function sheIsLeaving(history, lastUserMessages = 2) {
+  return history.filter((m) => m.role === "user").slice(-lastUserMessages)
+    .some((m) => detectIntent(m.content)?.id === "buenas_noches" || isFarewell(m.content));
+}
+
+// Índices del corpus cuya respuesta tuya es una despedida (para no mostrarlas como ejemplo fuera de contexto).
+const farewellCache = new WeakMap();
+export function farewellPairs(corpus) {
+  if (!farewellCache.has(corpus)) farewellCache.set(corpus, new Set(corpus.flatMap((p, i) => (isFarewell(p.me.join("\n")) ? [i] : []))));
+  return farewellCache.get(corpus);
+}
+
 const cache = new WeakMap(); // corpus → Map(intentId → respuestas)
 const MAX_REPLY_CHARS = 140;
 
-// Todas tus respuestas históricas (tandas de mensajes) al último mensaje de ella que cae en esa situación.
+// Todas tus respuestas históricas (tandas de mensajes) al último mensaje del contacto que cae en esa situación.
 export function repliesForIntent(corpus, intentId) {
   if (!cache.has(corpus)) {
     const byIntent = new Map();
     for (const pair of corpus) {
-      const intent = detectIntent(pair.her.at(-1) ?? "");
+      const intent = detectIntent(pair.them.at(-1) ?? "");
       const reply = pair.me.join("\n");
       if (!intent || reply.length > MAX_REPLY_CHARS || isContextual(reply)) continue;
       byIntent.set(intent.id, [...(byIntent.get(intent.id) ?? []), pair.me]);

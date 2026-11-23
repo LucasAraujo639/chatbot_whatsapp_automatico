@@ -4,7 +4,7 @@ import { respond, buildSystemPrompt } from "../src/responder.js";
 import { buildLexicon } from "../src/lexicon.js";
 
 const lexicon = buildLexicon(["hola amor", "hola amor", "buenas noches negrita", "buenas noches negrita", "que haces", "que haces"]);
-const corpus = [{ her: ["buenas noches"], me: ["buenas noches negrita"] }, { her: ["buenas noches amor"], me: ["descansa amor"] }];
+const corpus = [{ them: ["buenas noches"], me: ["buenas noches negrita"] }, { them: ["buenas noches amor"], me: ["descansa amor"] }];
 const history = [{ role: "user", content: "hola" }];
 
 const makeDeps = (outputs, guard = { enabled: true, maxRetries: 2 }) => {
@@ -64,7 +64,7 @@ test("saludo: no repite la respuesta que el bot ya usó", () => {
 });
 
 test("el prompt pide la cantidad de mensajes elegida dentro del rango", () => {
-  assert.match(buildSystemPrompt({ history, burstTarget: 3 }), /exactamente 3 mensajes seguidos/);
+  assert.match(buildSystemPrompt({ history, burstTarget: 3 }), /hasta 3 mensajes seguidos/);
   assert.match(buildSystemPrompt({ history, burstTarget: 1 }), /UN solo mensaje/);
 });
 
@@ -74,7 +74,7 @@ test("respond elige la cantidad con el rng y recorta lo que se pasa del máximo"
   let prompt;
   d.chat = async (_p, system) => { prompt = system; return "hola\n---\namor\n---\nque haces\n---\nnada"; };
   const r = await respond(history, {}, d);
-  assert.match(prompt, /exactamente 2 mensajes/);
+  assert.match(prompt, /hasta 2 mensajes/);
   assert.deepEqual(r.parts.map((p) => p.text), ["hola", "amor que haces nada"]);
 });
 
@@ -82,4 +82,42 @@ test("el prompt aclara que de los ejemplos se copia el estilo, no el contenido",
   const p = buildSystemPrompt({ corpus, lexicon, history: [{ role: "user", content: "Buenas noches" }], rng: () => 0.5 });
   assert.match(p, /copiá solo el tono y la forma/i);
   assert.match(p, /Nunca copies de los ejemplos hechos, personas, días, horarios/);
+});
+
+test("no se despide si el contacto no dijo que se va", async () => {
+  const h = [{ role: "user", content: "Perdón amor, tengo que ganar plata jaja" }];
+  const prompt = buildSystemPrompt({ history: h });
+  assert.match(prompt, /prohibido despedirte/);
+  const d = makeDeps(["jajaja\n---\nque descanses gorda\n---\nte amo"]);
+  d.getConfig = () => ({ provider: {}, guard: { enabled: false }, burst: { min: 1, max: 5 } });
+  const r = await respond(h, {}, d);
+  assert.deepEqual(r.parts.map((p) => p.text), ["jajaja", "te amo"]);
+});
+
+test("si el contacto se va a dormir, la despedida está permitida", async () => {
+  const h = [{ role: "user", content: "me voy a dormir amor" }];
+  assert.doesNotMatch(buildSystemPrompt({ history: h }), /prohibido despedirte/);
+  const d = makeDeps(["que descanses gorda"]);
+  d.getConfig = () => ({ provider: {}, guard: { enabled: false }, burst: { min: 1, max: 5 } });
+  const r = await respond(h, {}, d);
+  assert.deepEqual(r.parts.map((p) => p.text), ["que descanses gorda"]);
+});
+
+test("el nombre del dueño sale de la config, si no del chat entrenado, si no uno genérico", async () => {
+  const { ownerNameOf, DEFAULT_OWNER_NAME } = await import("../src/config.js");
+  assert.equal(ownerNameOf({ ownerName: " Ana " }, { me: "Lucas" }), "Ana");
+  assert.equal(ownerNameOf({ ownerName: "" }, { me: "Lucas" }), "Lucas");
+  assert.equal(ownerNameOf({}, null), DEFAULT_OWNER_NAME);
+  const p = buildSystemPrompt({ name: "Ana", history });
+  assert.match(p, /^Sos Ana respondiendo/);
+  assert.doesNotMatch(p, /Lucas/);
+});
+
+test("respond usa el nombre configurado en el prompt", async () => {
+  const d = makeDeps(["hola"]);
+  d.getConfig = () => ({ ownerName: "Ana", provider: {}, guard: { enabled: false }, burst: { min: 1, max: 1 } });
+  let prompt;
+  d.chat = async (_p, system) => { prompt = system; return "hola"; };
+  await respond(history, {}, d);
+  assert.match(prompt, /Sos Ana/);
 });

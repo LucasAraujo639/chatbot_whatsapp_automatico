@@ -1,4 +1,4 @@
-// Seguimientos: si ella deja de contestar, el bot puede escribir por su cuenta.
+// Seguimientos: si el contacto deja de contestar, el bot puede escribir por su cuenta.
 // Todas las dependencias (reloj, timers, envío) se inyectan para poder testearlo.
 const MIN = 60_000;
 
@@ -53,7 +53,7 @@ export function createFollowUpScheduler({
       pending.delete(number);
       return onError(number, e);
     }
-    if (pending.get(number) === st) schedule(number, st.attempt + 1, now()); // si ella escribió mientras tanto, cancel() ya lo borró
+    if (pending.get(number) === st) schedule(number, st.attempt + 1, now()); // si el contacto escribió mientras tanto, cancel() ya lo borró
   }
 
   return {

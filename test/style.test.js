@@ -42,9 +42,9 @@ test("participants cuenta mensajes por persona, de más a menos", () => {
   assert.deepEqual(participants(msgs), [{ name: "Lucas", count: 2 }, { name: "Ana", count: 1 }]);
 });
 
-test("buildExamples arma pares solo cuando Lucas contesta a ella", () => {
+test("buildExamples arma pares solo cuando Lucas contesta al contacto", () => {
   const msgs = [msg("Ana", "hola"), msg("Lucas", "buenas"), msg("Lucas", "qué tal"), msg("Ana", "bien"), msg("Lucas", "genial")];
-  assert.deepEqual(buildExamples(msgs, "Lucas"), [{ her: "hola", me: "buenas" }, { her: "bien", me: "genial" }]);
+  assert.deepEqual(buildExamples(msgs, "Lucas"), [{ them: "hola", me: "buenas" }, { them: "bien", me: "genial" }]);
 });
 
 test("buildExamples limita la cantidad y se queda con los más recientes", () => {
@@ -68,9 +68,9 @@ test("statsOf no falla si la persona no escribió nada", () => {
   assert.deepEqual(statsOf([msg("Ana", "hola")], "Lucas"), { count: 0, avgLen: 0, topEmoji: "", lowercasePct: 0 });
 });
 
-test("buildCorpus agrupa tandas: contexto de ella (últimos N) → tanda de Lucas (hasta M)", () => {
+test("buildCorpus agrupa tandas: contexto del contacto (últimos N) → tanda de Lucas (hasta M)", () => {
   const msgs = [msg("Ana", "1"), msg("Ana", "2"), msg("Ana", "3"), msg("Ana", "4"), msg("Lucas", "a"), msg("Lucas", "b"), msg("Lucas", "c")];
-  assert.deepEqual(buildCorpus(msgs, "Lucas", { herContext: 3, maxMine: 2 }), [{ her: ["2", "3", "4"], me: ["a", "b"] }]);
+  assert.deepEqual(buildCorpus(msgs, "Lucas", { theirContext: 3, maxMine: 2 }), [{ them: ["2", "3", "4"], me: ["a", "b"] }]);
 });
 
 test("buildCorpus ignora tandas de Lucas que no responden a nadie", () => {

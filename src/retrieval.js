@@ -1,4 +1,4 @@
-// Busca en tu corpus los pares (ella → vos) más parecidos al mensaje actual. BM25 simplificado, sin dependencias.
+// Busca en tu corpus los pares (contacto → vos) más parecidos al mensaje actual. BM25 simplificado, sin dependencias.
 import { normalize } from "./topics.js";
 import { tokenize, collapse } from "./lexicon.js";
 import { isContextual } from "./context-filter.js";
@@ -10,7 +10,7 @@ const terms = (text) => [...new Set(tokenize(normalize(text)).map(collapse).filt
 const indexes = new WeakMap();
 function indexOf(corpus) {
   if (!indexes.has(corpus)) {
-    const docs = corpus.map((p) => terms(p.her.join(" ")));
+    const docs = corpus.map((p) => terms(p.them.join(" ")));
     const df = new Map();
     for (const d of docs) for (const t of d) df.set(t, (df.get(t) ?? 0) + 1);
     // Respuestas que solo tienen sentido en su charla original: no se muestran como ejemplo.

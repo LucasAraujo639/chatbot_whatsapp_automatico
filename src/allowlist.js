@@ -1,4 +1,4 @@
-// Palabras que Lucas aprobó a mano ("sí, esta la uso"). Viven aparte del corpus entrenado
+// Palabras que el dueño aprobó a mano ("sí, esta la uso"). Viven aparte del corpus entrenado
 // para no perderse al reimportar el chat. `createAllowlist(file)` permite testearlo sin tocar data/.
 import fs from "node:fs";
 import path from "node:path";

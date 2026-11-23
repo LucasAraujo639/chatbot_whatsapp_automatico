@@ -2,7 +2,7 @@ import { QRCodeSVG } from 'qrcode.react'
 import { api } from '../api'
 import AllowWords from '../components/AllowWords'
 
-const KIND = { in: 'ella', out: 'enviado', dry: 'simulado', alert: 'alerta', info: 'info', error: 'error' }
+const KIND = { in: 'recibido', out: 'enviado', dry: 'simulado', alert: 'alerta', info: 'info', error: 'error' }
 
 export default function Panel({ s, save, notify, applyConfig }) {
   const c = s.config

@@ -1,4 +1,4 @@
-// Vocabulario real de Lucas + detección de palabras que él nunca usa (puro, sin I/O).
+// Vocabulario real del dueño + detección de palabras que él nunca usa (puro, sin I/O).
 import { normalize } from "./topics.js";
 
 const TOKEN = /[\p{L}\p{N}]+/gu;
@@ -12,7 +12,7 @@ const isLaugh = (c) => LAUGH.test(c);
 
 export const tokenize = (text) => text.match(TOKEN) ?? [];
 
-// Conjunto de palabras canónicas de un texto (para permitir lo que ella ya escribió o está en "datos sobre mí").
+// Conjunto de palabras canónicas de un texto (para permitir lo que el contacto ya escribió o está en "datos sobre mí").
 export const wordSet = (...texts) => new Set(texts.flatMap((t) => tokenize(t).map(canonical)));
 
 export function buildLexicon(messages, { minCount = 2, topN = 150 } = {}) {
@@ -33,7 +33,7 @@ export function buildLexicon(messages, { minCount = 2, topN = 150 } = {}) {
   return { words, top, size: kept.length };
 }
 
-// Palabras de `text` que no están en el vocabulario de Lucas, ni en `allowed` (lo que ya se dijo en el hilo).
+// Palabras de `text` que no están en el vocabulario del dueño, ni en `allowed` (lo que ya se dijo en el hilo).
 export function unknownWords(text, lexicon, allowed = new Set()) {
   const bad = new Set();
   for (const raw of tokenize(text)) {

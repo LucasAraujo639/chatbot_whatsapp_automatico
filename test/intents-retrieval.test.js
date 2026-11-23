@@ -11,16 +11,16 @@ test("detectIntent entiende variantes de buenas noches", () => {
 });
 
 const msgs = [
-  { who: "Ella", text: "Buenas noches amor" }, { who: "Yo", text: "Buenas noches negrita" }, { who: "Yo", text: "Descansa" },
-  { who: "Ella", text: "Vamos a la cancha el sábado?" }, { who: "Yo", text: "Siii amorrr" },
-  { who: "Ella", text: "Buenas noches" }, { who: "Yo", text: "Buenas noches negrita ❤" },
-  { who: "Ella", text: "Qué hacés" }, { who: "Yo", text: "Nada, mirando tele" },
+  { who: "Contacto", text: "Buenas noches amor" }, { who: "Yo", text: "Buenas noches negrita" }, { who: "Yo", text: "Descansa" },
+  { who: "Contacto", text: "Vamos a la cancha el sábado?" }, { who: "Yo", text: "Siii amorrr" },
+  { who: "Contacto", text: "Buenas noches" }, { who: "Yo", text: "Buenas noches negrita ❤" },
+  { who: "Contacto", text: "Qué hacés" }, { who: "Yo", text: "Nada, mirando tele" },
 ];
 const corpus = buildCorpus(msgs, "Yo");
 
 test("buildCorpus agrupa tandas y conserva todos tus mensajes", () => {
   assert.equal(corpus.length, 4);
-  assert.deepEqual(corpus[0], { her: ["Buenas noches amor"], me: ["Buenas noches negrita", "Descansa"] });
+  assert.deepEqual(corpus[0], { them: ["Buenas noches amor"], me: ["Buenas noches negrita", "Descansa"] });
 });
 
 test("repliesForIntent devuelve tus respuestas reales a esa situación", () => {
@@ -43,10 +43,10 @@ test("parseText limpia mensajes borrados y marcas invisibles", () => {
 
 // Pares cuya respuesta solo tiene sentido en esa charla puntual.
 const mixed = [
-  { her: ["vamos a la cancha?"], me: ["no puedo, el martes es feriado"] },
-  { her: ["vamos a la cancha?"], me: ["siii vamos"] },
-  { her: ["buenas noches"], me: ["se paso 20 minutos y no me contestaste"] },
-  { her: ["buenas noches"], me: ["buenas noches negrita"] },
+  { them: ["vamos a la cancha?"], me: ["no puedo, el martes es feriado"] },
+  { them: ["vamos a la cancha?"], me: ["siii vamos"] },
+  { them: ["buenas noches"], me: ["se paso 20 minutos y no me contestaste"] },
+  { them: ["buenas noches"], me: ["buenas noches negrita"] },
 ];
 
 test("retrieveExamples no devuelve respuestas contextuales aunque se parezcan", () => {

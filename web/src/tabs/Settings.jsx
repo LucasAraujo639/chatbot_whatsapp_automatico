@@ -3,7 +3,7 @@ import { api } from '../api'
 
 export default function Settings({ s, save, notify }) {
   const c = s.config
-  const [t, setT] = useState({ debounceMinSec: c.debounceMinSec, debounceMaxSec: c.debounceMaxSec, manualPauseMin: c.manualPauseMin, ownerNumber: c.ownerNumber })
+  const [t, setT] = useState({ debounceMinSec: c.debounceMinSec, debounceMaxSec: c.debounceMaxSec, manualPauseMin: c.manualPauseMin, ownerNumber: c.ownerNumber, ownerName: c.ownerName ?? '' })
   const [f, setF] = useState({ ...c.followUp, delaysText: c.followUp.delaysMin.join(', ') })
   const saveFollowUp = () => {
     const delaysMin = f.delaysText.split(',').map((x) => Number(x.trim())).filter((x) => x > 0)
@@ -30,13 +30,14 @@ export default function Settings({ s, save, notify }) {
     <>
       <div className="card">
         <h2>Tiempos</h2>
-        <p className="hint">Cuando ella manda varios mensajes seguidos, el bot espera un tiempo al azar entre el mínimo y el máximo antes de contestar todo junto.</p>
+        <p className="hint">Cuando el contacto manda varios mensajes seguidos, el bot espera un tiempo al azar entre el mínimo y el máximo antes de contestar todo junto.</p>
         <div className="row">
           <label className="f">Espera mínima (seg)<input type="number" min="1" value={t.debounceMinSec} onChange={(e) => setT({ ...t, debounceMinSec: Number(e.target.value) })} /></label>
           <label className="f">Espera máxima (seg)<input type="number" min="1" value={t.debounceMaxSec} onChange={(e) => setT({ ...t, debounceMaxSec: Number(e.target.value) })} /></label>
           <label className="f">Silencio si escribís vos (min)<input type="number" min="0" value={t.manualPauseMin} onChange={(e) => setT({ ...t, manualPauseMin: Number(e.target.value) })} /></label>
         </div>
         <div className="row">
+          <label className="f">Tu nombre (el bot habla como esta persona; vacío = el nombre del chat con el que entrenaste)<input value={t.ownerName} placeholder="Ej: Lucas" onChange={(e) => setT({ ...t, ownerName: e.target.value })} /></label>
           <label className="f">Tu número (para recibir avisos por WhatsApp, opcional)<input value={t.ownerNumber} onChange={(e) => setT({ ...t, ownerNumber: e.target.value.replace(/\D/g, '') })} /></label>
         </div>
         <button className="primary" onClick={() => save(t)}>Guardar</button>
@@ -61,7 +62,7 @@ export default function Settings({ s, save, notify }) {
           <h2 style={{ margin: 0 }}>Seguimientos</h2>
           <label className="switch" title="Activar seguimientos"><input type="checkbox" checked={f.enabled} onChange={(e) => setF({ ...f, enabled: e.target.checked })} /><span /></label>
         </div>
-        <p className="hint">Si ella deja de contestar después de que el bot le escribió, el bot puede mandar un mensaje por su cuenta. Se cancela apenas ella (o vos) escriba. Respeta las pausas y el modo prueba. Los pendientes se pierden si reiniciás el servidor.</p>
+        <p className="hint">Si el contacto deja de contestar después de que el bot le escribió, el bot puede mandar un mensaje por su cuenta. Se cancela apenas el contacto (o vos) escriba. Respeta las pausas y el modo prueba. Los pendientes se pierden si reiniciás el servidor.</p>
         <div className="row">
           <label className="f">Máximo de mensajes por silencio<input type="number" min="1" max="9" value={f.maxAttempts} onChange={(e) => setF({ ...f, maxAttempts: Number(e.target.value) })} /></label>
           <label className="f">Esperas en minutos (una por intento, separadas por coma)<input value={f.delaysText} onChange={(e) => setF({ ...f, delaysText: e.target.value })} placeholder="20, 120, 360" /></label>
@@ -78,7 +79,7 @@ export default function Settings({ s, save, notify }) {
 
       <div className="card">
         <h2>Temas que pausan al bot</h2>
-        <p className="hint">Si ella menciona alguna de estas palabras, el bot deja de responderle y te avisa. Después lo reactivás desde el Panel.</p>
+        <p className="hint">Si el contacto menciona alguna de estas palabras, el bot deja de responderle y te avisa. Después lo reactivás desde el Panel.</p>
         {topics.map((x) => (
           <div className="big" key={x.id} style={{ display: 'block' }}>
             <div className="row" style={{ justifyContent: 'space-between', marginBottom: 4 }}>

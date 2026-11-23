@@ -9,6 +9,7 @@ export const DEFAULTS = {
   debounceMaxSec: 10,
   manualPauseMin: 30,
   ownerNumber: "",
+  ownerName: "", // tu nombre: el bot se presenta y habla como esta persona (vacío = el nombre del chat entrenado)
   contacts: [], // { number, name, enabled, paused }
   provider: {
     baseUrl: "https://opencode.ai/inference/openai/v1",
@@ -20,9 +21,9 @@ export const DEFAULTS = {
   // Ritmo de envío: mensajes seguidos por respuesta y segundos "escribiendo…" antes de cada uno (al azar entre min y max).
   burst: { min: 1, max: 3 },
   typing: { minSec: 2, maxSec: 6 },
-  // Control de fidelidad: rechaza respuestas con palabras que Lucas nunca usa y las reintenta.
+  // Control de fidelidad: rechaza respuestas con palabras que el dueño nunca usa y las reintenta.
   guard: { enabled: true, maxRetries: 2 },
-  // Seguimientos: el bot escribe solo si ella deja de contestar. Desactivado por defecto.
+  // Seguimientos: el bot escribe solo si el contacto deja de contestar. Desactivado por defecto.
   followUp: {
     enabled: false,
     maxAttempts: 2,
@@ -57,6 +58,10 @@ function merge(base, patch = {}) {
     followUp: { ...base.followUp, ...(patch.followUp || {}), quietHours: { ...base.followUp.quietHours, ...(patch.followUp?.quietHours || {}) } },
   };
 }
+
+export const DEFAULT_OWNER_NAME = "el dueño de este WhatsApp";
+// Nombre con el que el bot se presenta: el de Ajustes, si no el del chat con el que entrenaste, si no uno genérico.
+export const ownerNameOf = (cfg, profile = null) => cfg?.ownerName?.trim() || profile?.me?.trim() || DEFAULT_OWNER_NAME;
 
 export function loadConfig() {
   let saved = {};

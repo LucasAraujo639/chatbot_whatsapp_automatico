@@ -3,7 +3,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { chat } from "./llm.js";
-import { getConfig } from "./config.js";
+import { loadProfile } from "./style.js";
+import { getConfig, ownerNameOf, DEFAULT_OWNER_NAME } from "./config.js";
 
 export const GREETER_FILE = "data/greeter.json";
 export const MAX_RULES = 40;
@@ -35,12 +36,12 @@ export function createGreeterStore(file = GREETER_FILE) {
 export const greeterStore = createGreeterStore();
 
 // Prompt puro (sin I/O) para poder testearlo.
-export function buildGreeterPrompt({ instructions = "", rules = [] } = {}) {
+export function buildGreeterPrompt({ instructions = "", rules = [], name = DEFAULT_OWNER_NAME } = {}) {
   const rulesBlock = rules.length
     ? `\nCómo responder según lo que te digan (si el mensaje se parece a uno de estos, respondé con esa idea y ese tono; podés adaptar las palabras):\n${rules.map((r) => `- Si te dicen: "${r.when}"\n  Respondé: "${r.reply}"`).join("\n")}\n`
     : "";
-  return `Sos Lucas respondiendo por WhatsApp a una persona que no tenés agendada y que te escribió por primera vez.
-${instructions ? `\nInstrucciones de Lucas:\n${instructions}\n` : ""}${rulesBlock}
+  return `Sos ${name} respondiendo por WhatsApp a una persona que no tenés agendada y que te escribió por primera vez.
+${instructions ? `\nInstrucciones de ${name}:\n${instructions}\n` : ""}${rulesBlock}
 REGLAS:
 1. Escribí UN solo mensaje corto y natural, en español rioplatense.
 2. Respondé a lo que la persona dijo. Si no coincide con ninguna regla, mandá un saludo breve y amable.
@@ -52,7 +53,7 @@ REGLAS:
 // y con un maxTokens chico devuelven el mensaje cortado o vacío.
 export const GREETER_MIN_TOKENS = 1024;
 
-const defaultDeps = { getConfig, chat, load: () => greeterStore.load() };
+const defaultDeps = { getConfig, chat, load: () => greeterStore.load(), profile: loadProfile };
 
 /**
  * Texto que se le mandaría a un desconocido.
@@ -67,7 +68,7 @@ export async function draftGreeting(texts, deps = defaultDeps) {
 /** Siempre usa el asistente (lo usa también el botón "Probar"). */
 export async function generateGreeting(texts, deps = defaultDeps) {
   const cfg = deps.getConfig();
-  const system = buildGreeterPrompt(deps.load());
+  const system = buildGreeterPrompt({ ...deps.load(), name: ownerNameOf(cfg, deps.profile?.()) });
   const provider = { ...cfg.provider, maxTokens: Math.max(cfg.provider.maxTokens ?? 0, GREETER_MIN_TOKENS) };
   const out = await deps.chat(provider, system, [{ role: "user", content: texts.join("\n") }]);
   const text = out.replace(/^["“]|["”]$/g, "").trim();

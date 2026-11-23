@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 
-// Igual que el bot real: espera un momento por si ella manda más mensajes antes de contestar todo junto.
+// Igual que el bot real: espera un momento por si el contacto manda más mensajes antes de contestar todo junto.
 const DEBOUNCE_MS = 1800
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
@@ -106,7 +106,7 @@ export function useSimChat() {
     timer.current = setTimeout(respond, DEBOUNCE_MS)
   }, [pausedBy, respond, flushReveal])
 
-  // "Ella no contesta": el bot escribe por su cuenta
+  // "El contacto no contesta": el bot escribe por su cuenta
   const simulateSilence = useCallback(async () => {
     await request('/simulate/follow-up', { messages: toApiMessages(itemsRef.current), attempt: attemptRef.current }, [])
     attemptRef.current += 1

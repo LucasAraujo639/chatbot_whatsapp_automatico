@@ -98,7 +98,7 @@ export function createConversationService({
     history.save();
   }
 
-  // Envía los mensajes uno tras otro con ritmo humano; `quotable[n-1]` es el mensaje de ella que se cita con replyTo = n.
+  // Envía los mensajes uno tras otro con ritmo humano; `quotable[n-1]` es el mensaje del contacto que se cita con replyTo = n.
   async function sendParts(number, address, parts, quotable = []) {
     for (const { text, replyTo } of parts) {
       if (getConfig().dryRun) { log("dry", replyTo ? `↩ ${replyTo}: ${text}` : text, number); continue; }
@@ -117,7 +117,7 @@ export function createConversationService({
     if (cfg.ownerNumber) await messenger.notifyOwner(cfg.ownerNumber, `🤖 Pausé el bot con ${contact.name || number} (${topic.label}):\n"${joined}"`);
   }
 
-  // Responde al lote de mensajes que ella mandó (el buffer ya resolvió debounce y pausas).
+  // Responde al lote de mensajes que el contacto mandó (el buffer ya resolvió debounce y pausas).
   async function reply(number, msgs, address) {
     const cfg = getConfig();
     const contact = contactByNumber(cfg, number);
@@ -133,17 +133,17 @@ export function createConversationService({
     recordReply(number, parts);
 
     await sendParts(number, address, parts, msgs.map((x) => x.ref));
-    followUps.arm(number); // si ella no contesta, el scheduler decide si insistir
+    followUps.arm(number); // si el contacto no contesta, el scheduler decide si insistir
   }
 
-  // Mensaje espontáneo cuando ella dejó de contestar.
+  // Mensaje espontáneo cuando el contacto dejó de contestar.
   async function sendFollowUp(number, info) {
     const address = addresses.get(number) || messenger.addressFor(number);
     const { parts, blocked } = await respond(history.get(number).slice(-CONTEXT_MESSAGES), { followUp: info });
     if (blocked) throw Object.assign(new Error(`Seguimiento bloqueado: usó palabras que no usás (${blocked.join(", ")})`), { words: blocked });
     if (!parts.length) throw new Error("El modelo no devolvió texto");
     recordReply(number, parts);
-    log("info", `Seguimiento ${info.attempt + 1} (ella no contesta hace ${info.minutesSilent} min)`, number);
+    log("info", `Seguimiento ${info.attempt + 1} (el contacto no contesta hace ${info.minutesSilent} min)`, number);
     await sendParts(number, address, parts);
   }
 
@@ -162,9 +162,9 @@ export function createConversationService({
     log("info", `Detecté un mensaje tuyo escrito a mano (id ${id}); el bot espera ${cfg.manualPauseMin} min.`, contact.number);
   }
 
-  // Mensaje de ella: se acumula y se responde todo junto tras una espera aleatoria (debounce).
+  // Mensaje del contacto: se acumula y se responde todo junto tras una espera aleatoria (debounce).
   function onIncomingMessage({ text, ref, address }, contact) {
-    followUps.cancel(contact.number); // ella escribió: no hace falta insistir
+    followUps.cancel(contact.number); // el contacto escribió: no hace falta insistir
     if (!contact.enabled) return;
     messageBuffer.add(contact.number, { text, ref }, address);
     addresses.set(contact.number, address);

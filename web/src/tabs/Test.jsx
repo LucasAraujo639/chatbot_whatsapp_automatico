@@ -15,7 +15,7 @@ export default function Test({ s, notify }) {
       <div className="row" style={{ justifyContent: 'space-between' }}>
         <h2 style={{ margin: 0 }}>Chat de prueba</h2>
         <div className="row" style={{ margin: 0 }}>
-          <button onClick={simulateSilence} disabled={!canSimulateSilence} title="El bot escribe por su cuenta como si ella no hubiera contestado">Simular silencio</button>
+          <button onClick={simulateSilence} disabled={!canSimulateSilence} title="El bot escribe por su cuenta como si el contacto no hubiera contestado">Simular silencio</button>
           <button onClick={reset} disabled={items.length === 0}>Reiniciar chat</button>
         </div>
       </div>

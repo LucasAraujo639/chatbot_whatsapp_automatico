@@ -50,7 +50,7 @@ export async function simulateTurn(rawMessages, deps = { getConfig, respond }) {
   return generate(history, { incomingCount: lastBatchSize }, deps);
 }
 
-// Seguimiento: ella no contestó después del último mensaje del bot.
+// Seguimiento: el contacto no contestó después del último mensaje del bot.
 export async function simulateFollowUp(rawMessages, rawAttempt = 0, deps = { getConfig, respond }) {
   const { history } = validateMessages(rawMessages, { lastRole: "assistant" });
   const attempt = Math.min(MAX_ATTEMPT, Math.max(0, Number.parseInt(rawAttempt, 10) || 0));

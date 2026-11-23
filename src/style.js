@@ -25,7 +25,7 @@ export function participants(msgs) {
 export function buildExamples(msgs, me, max = 40) {
   const pairs = [];
   for (let i = 1; i < msgs.length; i++) {
-    if (msgs[i].who === me && msgs[i - 1].who !== me) pairs.push({ her: msgs[i - 1].text, me: msgs[i].text });
+    if (msgs[i].who === me && msgs[i - 1].who !== me) pairs.push({ them: msgs[i - 1].text, me: msgs[i].text });
   }
   const step = Math.max(1, Math.floor(pairs.length / max));
   return pairs.filter((_, i) => i % step === 0).slice(-max);
@@ -41,8 +41,8 @@ export function statsOf(msgs, me) {
   return { count: mine.length, avgLen, topEmoji, lowercasePct };
 }
 
-// Agrupa mensajes seguidos del mismo autor en "tandas" y arma pares (últimos mensajes de ella → toda tu tanda).
-export function buildCorpus(msgs, me, { herContext = 3, maxMine = 5 } = {}) {
+// Agrupa mensajes seguidos del mismo autor en "tandas" y arma pares (últimos mensajes del contacto → toda tu tanda).
+export function buildCorpus(msgs, me, { theirContext = 3, maxMine = 5 } = {}) {
   const turns = [];
   for (const m of msgs) {
     const last = turns.at(-1);
@@ -51,7 +51,7 @@ export function buildCorpus(msgs, me, { herContext = 3, maxMine = 5 } = {}) {
   }
   const pairs = [];
   for (let i = 1; i < turns.length; i++) {
-    if (turns[i].mine && !turns[i - 1].mine) pairs.push({ her: turns[i - 1].texts.slice(-herContext), me: turns[i].texts.slice(0, maxMine) });
+    if (turns[i].mine && !turns[i - 1].mine) pairs.push({ them: turns[i - 1].texts.slice(-theirContext), me: turns[i].texts.slice(0, maxMine) });
   }
   return pairs;
 }
@@ -82,6 +82,16 @@ export function saveProfile(msgs, me, lastN = 10000) {
   writeJson(PROFILE, profile, 2);
   return profile;
 }
-export const loadProfile = () => readJson(PROFILE);
-export const loadCorpus = () => readJson(CORPUS);
+// Datos entrenados con versiones viejas guardaban el lado del contacto como `her`: se leen igual.
+const migrated = new WeakMap();
+const withThem = (list) => {
+  if (!Array.isArray(list) || !list.some((p) => "her" in p)) return list;
+  if (!migrated.has(list)) migrated.set(list, list.map(({ her, ...p }) => ({ them: her, ...p })));
+  return migrated.get(list);
+};
+export const loadProfile = () => {
+  const p = readJson(PROFILE);
+  return p?.examples ? { ...p, examples: withThem(p.examples) } : p;
+};
+export const loadCorpus = () => withThem(readJson(CORPUS));
 export const loadLexicon = () => readJson(LEXICON);

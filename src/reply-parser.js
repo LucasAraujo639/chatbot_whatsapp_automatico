@@ -1,5 +1,5 @@
 // Formato de salida del modelo: mensajes separados por una línea "---".
-// Cada mensaje puede empezar con "[N]" = responde (cita) al mensaje N de ella.
+// Cada mensaje puede empezar con "[N]" = responde (cita) al mensaje N del contacto.
 const SEPARATOR = /\n---\n/;
 const REPLY_TAG = /^\[(\d+)\]\s*/;
 
@@ -17,7 +17,7 @@ export function parseReply(text, incomingCount = 0) {
     .filter((p) => p.text);
 }
 
-// Mensajes de ella numerados para que el modelo pueda citarlos. Con uno solo no hace falta.
+// Mensajes del contacto numerados para que el modelo pueda citarlos. Con uno solo no hace falta.
 export const formatIncoming = (texts) => (texts.length > 1 ? texts.map((t, i) => `[${i + 1}] ${t}`).join("\n") : texts[0] ?? "");
 
 // Para guardar en el historial: sin marcadores de cita (los números solo valen para el lote actual).

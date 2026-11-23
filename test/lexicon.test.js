@@ -18,5 +18,5 @@ test("buildLexicon descarta palabras de un solo uso y risas", () => {
 
 test("unknownWords bloquea inventos como 'holuu'", () => assert.deepEqual(unknownWords("Holuu amor", lex), ["holuu"]));
 test("acepta alargues y risas de palabras conocidas", () => assert.deepEqual(unknownWords("hola amorrrr jajajaja jsjs 😍 2", lex), []));
-test("acepta palabras que ella ya dijo en el hilo", () => assert.deepEqual(unknownWords("dormiste bien", lex, wordSet("¿Dormiste bien?")), []));
+test("acepta palabras que el contacto ya dijo en el hilo", () => assert.deepEqual(unknownWords("dormiste bien", lex, wordSet("¿Dormiste bien?")), []));
 test("palabras nuevas fuera del hilo se detectan", () => assert.deepEqual(unknownWords("vamos al zoologico", lex).sort(), ["al", "vamos", "zoologico"].sort()));

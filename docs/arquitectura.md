@@ -66,7 +66,7 @@ El **asistente de bienvenida** no usa el corpus del chat exportado: su prompt sa
 | `lexicon.js` / `allowlist.js` | Léxico del dueño y palabras extra permitidas por el dueño. |
 | `topics.js` | Detección de temas sensibles por palabras clave. |
 | `intents.js` | Situaciones típicas (saludos, cariño, etc.) con las respuestas reales del dueño como ejemplo para el modelo. |
-| `retrieval.js` | Búsqueda BM25 simplificada en el corpus: devuelve los pares "ella → dueño" más parecidos al mensaje actual. |
+| `retrieval.js` | Búsqueda BM25 simplificada en el corpus: devuelve los pares "contacto → dueño" más parecidos al mensaje actual. |
 | `reply-parser.js` | Formato de los mensajes entrantes y separación de la respuesta del modelo en partes. |
 | `followup.js` | Scheduler de seguimientos, con horario silencioso. Dependencias inyectadas para testear. |
 | `pacing.js` | Cálculo de ráfagas y tiempos de escritura. Funciones puras. |
