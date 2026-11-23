@@ -82,3 +82,25 @@ test("URL base con espacios se recorta; sin http(s) se rechaza sin llamar", asyn
     assert.equal(calls.length, 1);
   });
 });
+
+const replyCut = (content) => new Response(JSON.stringify({ choices: [{ message: { content }, finish_reason: "length" }] }));
+
+test("chat reintenta con más tokens si la respuesta se cortó (modelo que razona)", async () => {
+  let n = 0;
+  await withFetch(() => (n++ === 0 ? replyCut("[") : reply("Una milanesa")), async (calls) => {
+    assert.equal(await chat(provider, "S", []), "Una milanesa");
+    assert.deepEqual(calls.map((c) => JSON.parse(c.opts.body).max_tokens), [50, 1024]);
+  });
+});
+
+test("chat lanza error claro si sigue cortada después del reintento (nunca devuelve medio mensaje)", async () => {
+  await withFetch(() => replyCut(""), async () => {
+    await assert.rejects(chat(provider, "S", []), /se cortó por el límite de tokens/);
+  });
+});
+
+test("chat descarta un <think> sin cerrar", async () => {
+  await withFetch(() => reply("hola <think>pensando sin terminar"), async () => {
+    assert.equal(await chat(provider, "S", []), "hola");
+  });
+});

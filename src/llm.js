@@ -23,21 +23,36 @@ async function request(url, init) {
   }
 }
 
-export async function chat(provider, system, messages) {
+// Los modelos que razonan (DeepSeek, etc.) gastan max_tokens pensando antes de escribir: con un tope
+// chico la respuesta llega vacía o cortada (finish_reason "length"). En ese caso se reintenta una vez
+// con este margen, y si igual se corta se avisa en vez de mandar medio mensaje.
+export const RETRY_MIN_TOKENS = 1024;
+
+async function complete(provider, system, messages, maxTokens) {
   const res = await request(`${trim(provider.baseUrl)}/chat/completions`, {
     method: "POST",
     headers: headers(provider.apiKey),
     body: JSON.stringify({
       model: provider.model,
-      max_tokens: provider.maxTokens,
+      max_tokens: maxTokens,
       temperature: provider.temperature,
       messages: [{ role: "system", content: system }, ...messages],
     }),
   });
   const body = await res.text();
   if (!res.ok) throw new Error(`LLM ${res.status}: ${body.slice(0, 300)}`);
-  const text = JSON.parse(body).choices?.[0]?.message?.content;
-  return (text || "").replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+  const choice = JSON.parse(body).choices?.[0];
+  const text = (choice?.message?.content || "").replace(/<think>[\s\S]*?(<\/think>|$)/g, "").trim();
+  return { text, truncated: choice?.finish_reason === "length" };
+}
+
+export async function chat(provider, system, messages) {
+  const first = await complete(provider, system, messages, provider.maxTokens);
+  if (!first.truncated) return first.text;
+  const retryTokens = Math.max((provider.maxTokens ?? 0) * 4, RETRY_MIN_TOKENS);
+  const second = await complete(provider, system, messages, retryTokens);
+  if (!second.truncated) return second.text;
+  throw new Error(`La respuesta del modelo se cortó por el límite de tokens (probé con ${retryTokens}); subí el "Largo máximo de respuesta"`);
 }
 
 export async function listModels(provider) {
