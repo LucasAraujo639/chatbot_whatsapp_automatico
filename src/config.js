@@ -10,6 +10,7 @@ export const DEFAULTS = {
   manualPauseMin: 30,
   ownerNumber: "",
   ownerName: "", // tu nombre: el bot se presenta y habla como esta persona (vacío = el nombre del chat entrenado)
+  timezone: "America/Argentina/Buenos_Aires", // zona horaria IANA para saludar y hablar acorde a la hora
   contacts: [], // { number, name, enabled, paused }
   provider: {
     baseUrl: "https://opencode.ai/inference/openai/v1",

@@ -9,6 +9,7 @@ import { unknownWords, wordSet } from "./lexicon.js";
 import { normalize } from "./topics.js";
 import { allowlist } from "./allowlist.js";
 import { pickBurstSize, limitParts, normalizeBurst } from "./pacing.js";
+import { timeBlock, localTime, wrongGreeting, fixGreetings } from "./time-context.js";
 
 export const ABOUT_FILE = "data/about-me.md";
 // Cuántos mensajes del historial se le pasan al modelo como contexto.
@@ -22,7 +23,7 @@ const shuffle = (arr, rng) => arr.map((v) => [rng(), v]).sort((a, b) => a[0] - b
 const asExample = (me) => me.join("\n---\n");
 
 // Prompt puro (sin I/O) para poder testearlo. Las reglas van al final, donde más pesan para un modelo chico.
-export function buildSystemPrompt({ now = new Date(), name = DEFAULT_OWNER_NAME, about = "", profile = null, corpus = null, lexicon = null, allowlist = [], history = [], burstTarget = null, rng = Math.random }) {
+export function buildSystemPrompt({ name = DEFAULT_OWNER_NAME, about = "", profile = null, corpus = null, lexicon = null, allowlist = [], history = [], burstTarget = null, timeContext = "", rng = Math.random }) {
   const incoming = lastUserText(history);
   const intent = incoming ? detectIntent(incoming) : null;
 
@@ -46,7 +47,6 @@ export function buildSystemPrompt({ now = new Date(), name = DEFAULT_OWNER_NAME,
   const s = profile?.stats;
 
   return `Sos ${name} respondiendo mensajes de WhatsApp. Escribí EXACTAMENTE como ${name}: mismo tono, largo, muletillas, puntuación y emojis.
-${timeLine(now)}
 ${s ? `Estadísticas de su estilo: largo medio ${s.avgLen} caracteres, emojis frecuentes: ${s.topEmoji || "ninguno"}, ${s.lowercasePct}% de sus mensajes van todo en minúscula.` : ""}
 ${lexicon?.top?.length ? `\nVocabulario real de ${name} (palabras y apodos que usa; no uses otros): ${[...lexicon.top, ...allowlist].join(", ")}\n` : ""}
 Datos sobre ${name}:
@@ -55,14 +55,14 @@ ${about}
 Ejemplos reales de situaciones parecidas (otra persona → ${name}). Son de otras charlas: copiá solo el tono y la forma, nunca lo que cuentan:
 ${examples}
 ${intentBlock}
-REGLAS (en orden de prioridad):
+${timeContext ? `${timeContext}\n` : ""}REGLAS (en orden de prioridad):
 1. Respondé SOLO a lo que la otra persona dijo en sus últimos mensajes y seguí el hilo de la charla. Prohibido introducir temas, planes, personas, lugares o hechos nuevos que no hayan aparecido en la conversación.
 2. Hacé una pregunta solo si continúa exactamente el mismo tema; si no, no preguntes.
 3. Sobre ${name} afirmá únicamente lo que está en "Datos sobre ${name}". Si la otra persona pregunta algo que no está ahí, no inventes: respondé corto y neutro con una reacción como las de los ejemplos.
 4. Usá solo palabras, apodos, risas y emojis que aparezcan en su vocabulario o en los ejemplos. Nunca inventes formas nuevas de saludar ni de escribir.
 5. Mismo largo y forma que los ejemplos: respuestas cortas y naturales, como chat real. Nunca copies de los ejemplos hechos, personas, días, horarios, tiempos ni anécdotas: pasaron en otra charla y acá no tienen sentido.
 6. Sé coherente con lo que ${name} YA dijo en esta conversación (los mensajes "assistant" son tuyos): si dijiste que estabas comiendo, estás comiendo; nunca te contradigas ni cambies la historia.
-7. ${leaving ? "La otra persona se está despidiendo: podés despedirte." : 'La otra persona NO dijo que se va a dormir ni que se despide: prohibido despedirte, decir "que descanses", "buenas noches", "andá a dormir" o similares.'}
+7. ${leaving ? "La otra persona se está despidiendo: podés despedirte." : 'La otra persona NO dijo que se va a dormir ni que se despide: prohibido despedirte, decir "que descanses", "andá a dormir" o similares.'}
 8. Lo que digas tiene que tener sentido para la hora actual: de noche no digas que te acabás de levantar ni que vas a desayunar; de mañana no digas que te vas a dormir.
 9. Nunca confirmes planes, citas, horarios ni dinero.
 10. No digas que sos una IA ni rompas el personaje; devolvé solo el texto del mensaje, sin comillas ni explicaciones.
@@ -71,20 +71,6 @@ Formato de respuesta:
 ${burstInstruction(burstTarget)}
 - Si la otra persona mandó varios mensajes numerados ([1], [2]...), podés empezar un mensaje con su número entre corchetes, por ejemplo "[2] jaja sí", para responderle puntualmente a ese. Hacelo solo cuando aporte (a veces sí, a veces no); el número va únicamente al principio del mensaje.`;
 }
-
-// Momento del día en la hora local del servidor (la misma del teléfono del dueño).
-export function partOfDay(hour) {
-  if (hour >= 6 && hour < 12) return "mañana";
-  if (hour >= 12 && hour < 14) return "mediodía";
-  if (hour >= 14 && hour < 20) return "tarde";
-  if (hour >= 20) return "noche";
-  return "madrugada";
-}
-const timeLine = (now) => {
-  const fecha = now.toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" });
-  const hora = now.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hour12: false });
-  return `Ahora es ${fecha}, ${hora} (${partOfDay(now.getHours())}).`;
-};
 
 const burstInstruction = (n) =>
   n === 1
@@ -99,10 +85,14 @@ const followUpInstruction = ({ attempt, minutesSilent }) =>
 const correctionInstruction = (words, name) =>
   `[Corrección interna, no es un mensaje de la otra persona] Tu respuesta usó palabras que ${name} nunca escribe: ${words.map((w) => `"${w}"`).join(", ")}. Reescribila con el mismo sentido usando solo su vocabulario y las formas de los ejemplos.`;
 
+const greetingCorrection = (bad, hour) =>
+  `[Corrección interna, no es un mensaje de la otra persona] Dijiste "${bad.join('", "')}" pero son las ${String(hour).padStart(2, "0")} h. Reescribila con el mismo sentido usando un saludo que corresponda a esa hora (o sin saludo).`;
+
 const defaultDeps = {
   getConfig,
   chat,
   random: Math.random,
+  now: Date.now,
   load: () => ({
     about: fs.existsSync(ABOUT_FILE) ? fs.readFileSync(ABOUT_FILE, "utf8") : "",
     profile: loadProfile(), corpus: loadCorpus(), lexicon: loadLexicon(), allowlist: allowlist.list(),
@@ -121,7 +111,9 @@ export async function respond(history, { followUp, incomingCount = 0 } = {}, dep
   const data = deps.load();
   const burstTarget = pickBurstSize(cfg.burst, deps.random);
   const name = ownerNameOf(cfg, data.profile);
-  const system = buildSystemPrompt({ ...data, name, history, burstTarget, rng: deps.random });
+  const nowMs = (deps.now ?? Date.now)();
+  const { hour } = localTime(nowMs, cfg.timezone);
+  const system = buildSystemPrompt({ ...data, name, history, burstTarget, timeContext: timeBlock(nowMs, cfg.timezone), rng: deps.random });
   const base = followUp ? [...history, { role: "user", content: followUpInstruction(followUp) }] : history;
   const guardOn = cfg.guard?.enabled && data.lexicon?.words;
   const allowed = wordSet(data.about, ...(data.allowlist ?? []), ...history.slice(-10).map((m) => stripMarkers(m.content)));
@@ -131,7 +123,10 @@ export async function respond(history, { followUp, incomingCount = 0 } = {}, dep
   const leaving = sheIsLeaving(history);
   let messages = base;
   let unknown = [];
-  for (let attempt = 0; attempt <= (guardOn ? cfg.guard.maxRetries : 0); attempt++) {
+  // Un saludo que no corresponde a la hora también se reintenta, aunque el control de palabras esté apagado.
+  const guardRetries = guardOn ? cfg.guard.maxRetries : 0;
+  const maxRetries = Math.max(guardRetries, 1);
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const out = await deps.chat(cfg.provider, system, messages);
     let parts = out ? parseReply(out, incomingCount) : [];
     // Red de seguridad: aunque el prompt lo prohíbe, un modelo chico a veces se despide sin motivo
@@ -142,10 +137,20 @@ export async function respond(history, { followUp, incomingCount = 0 } = {}, dep
     parts = limitParts(parts, normalizeBurst(cfg.burst).max);
     if (!parts.length) return { parts: [], blocked: null, notes, flagged: [] };
     unknown = guardOn ? [...new Set(parts.flatMap((p) => unknownWords(p.text, data.lexicon, allowed)))] : [];
-    if (!unknown.length) return { parts, blocked: null, notes, flagged: [...flagged] };
+    const badGreetings = [...new Set(parts.map((p) => wrongGreeting(p.text, hour)).filter(Boolean))];
+    if (!unknown.length && !badGreetings.length) return { parts, blocked: null, notes, flagged: [...flagged] };
+    if (!unknown.length && attempt === maxRetries) {
+      // Último recurso: el modelo insiste con un saludo fuera de hora; se lo cambiamos nosotros.
+      notes.push(`Cambié el saludo: ${badGreetings.join(", ")}`);
+      parts = parts.map((p) => ({ ...p, text: fixGreetings(p.text, hour) }));
+      return { parts, blocked: null, notes, flagged: [...flagged] };
+    }
     unknown.forEach((w) => flagged.add(w));
-    notes.push(`Corregí: ${unknown.join(", ")}`);
-    messages = [...base, { role: "assistant", content: out }, { role: "user", content: correctionInstruction(unknown, name) }];
+    const instructions = [];
+    if (unknown.length) { notes.push(`Corregí: ${unknown.join(", ")}`); instructions.push(correctionInstruction(unknown, name)); }
+    if (badGreetings.length) { notes.push(`Saludo fuera de hora: ${badGreetings.join(", ")}`); instructions.push(greetingCorrection(badGreetings, hour)); }
+    if (unknown.length && attempt >= guardRetries) break; // sin reintentos de palabras ajenas disponibles
+    messages = [...base, { role: "assistant", content: out }, { role: "user", content: instructions.join("\n") }];
   }
   return { parts: [], blocked: unknown, notes, flagged: [...flagged] };
 }

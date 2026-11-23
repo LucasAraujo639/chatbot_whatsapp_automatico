@@ -3,7 +3,7 @@ import { api } from '../api'
 
 export default function Settings({ s, save, notify }) {
   const c = s.config
-  const [t, setT] = useState({ debounceMinSec: c.debounceMinSec, debounceMaxSec: c.debounceMaxSec, manualPauseMin: c.manualPauseMin, ownerNumber: c.ownerNumber, ownerName: c.ownerName ?? '' })
+  const [t, setT] = useState({ debounceMinSec: c.debounceMinSec, debounceMaxSec: c.debounceMaxSec, manualPauseMin: c.manualPauseMin, ownerNumber: c.ownerNumber, ownerName: c.ownerName ?? '', timezone: c.timezone })
   const [f, setF] = useState({ ...c.followUp, delaysText: c.followUp.delaysMin.join(', ') })
   const saveFollowUp = () => {
     const delaysMin = f.delaysText.split(',').map((x) => Number(x.trim())).filter((x) => x > 0)
@@ -39,6 +39,9 @@ export default function Settings({ s, save, notify }) {
         <div className="row">
           <label className="f">Tu nombre (el bot habla como esta persona; vacío = el nombre del chat con el que entrenaste)<input value={t.ownerName} placeholder="Ej: Lucas" onChange={(e) => setT({ ...t, ownerName: e.target.value })} /></label>
           <label className="f">Tu número (para recibir avisos por WhatsApp, opcional)<input value={t.ownerNumber} onChange={(e) => setT({ ...t, ownerNumber: e.target.value.replace(/\D/g, '') })} /></label>
+        </div>
+        <div className="row">
+          <label className="f">Zona horaria (para saludar según la hora, ej: America/Argentina/Buenos_Aires)<input value={t.timezone} onChange={(e) => setT({ ...t, timezone: e.target.value })} /></label>
         </div>
         <button className="primary" onClick={() => save(t)}>Guardar</button>
       </div>

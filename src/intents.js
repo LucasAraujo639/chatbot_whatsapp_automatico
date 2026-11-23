@@ -16,7 +16,7 @@ export function detectIntent(text) {
 }
 
 // Despedidas / "andá a dormir": solo tienen sentido si el contacto dijo que se va.
-const FAREWELL = /descans|dormi(?:te|lona|lon|r)?\b|buenas? noches?|dulces suenos|que suenes|hasta manana|chau/;
+const FAREWELL = /descans|dormi(?:te|lona|lon|r)?\b|dulces suenos|que suenes|hasta manana|chau/;
 export const isFarewell = (text) => FAREWELL.test(normalize(text ?? ""));
 
 // ¿El contacto dijo en sus últimos mensajes que se va a dormir / se despide?

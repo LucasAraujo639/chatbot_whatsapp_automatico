@@ -122,10 +122,8 @@ test("respond usa el nombre configurado en el prompt", async () => {
   assert.match(prompt, /Sos Ana/);
 });
 
-test("el prompt incluye la hora actual y la regla de coherencia horaria", async () => {
-  const { partOfDay } = await import("../src/responder.js");
-  const p = buildSystemPrompt({ history, now: new Date(2026, 10, 22, 22, 5) });
+test("el prompt incluye el bloque de hora y la regla de coherencia horaria", () => {
+  const p = buildSystemPrompt({ history, timeContext: "Ahora son las 22:05 (noche) del domingo." });
   assert.match(p, /22:05 \(noche\)/);
   assert.match(p, /de noche no digas que te acabás de levantar/);
-  assert.deepEqual([3, 9, 13, 16, 23].map(partOfDay), ["madrugada", "mañana", "mediodía", "tarde", "noche"]);
 });
