@@ -175,7 +175,7 @@ function Greeter({ notify }) {
 
   const [loadError, setLoadError] = useState('')
   useEffect(() => { api('/unknown/greeter').then(setG).catch((e) => setLoadError(e.message)) }, [])
-  if (loadError) return <div className="card"><p className="hint check bad">No se pudo cargar el asistente: {loadError}</p></div>
+  if (loadError) return <p className="hint check bad">No se pudo cargar el asistente: {loadError}</p>
   if (!g) return null
 
   const setRule = (i, k, v) => setG({ ...g, rules: g.rules.map((r, j) => (j === i ? { ...r, [k]: v } : r)) })
@@ -186,14 +186,14 @@ function Greeter({ notify }) {
   }
 
   return (
-    <div className="card">
-      <h2>Asistente de bienvenida</h2>
+    <section className="settings-section">
+      <h3>Asistente de bienvenida</h3>
       <p className="hint">No usa tus chats exportados: aprende solo de lo que pongas acá. <b>Instrucciones</b>: quién sos, qué ofrecés, tono, qué nunca decir. <b>Reglas</b>: “si te dicen esto → respondé así”; el modelo toma la regla más parecida al mensaje y adapta la respuesta. Guardá y probá hasta que conteste como querés.</p>
       <label className="f">Instrucciones
         <textarea style={{ minHeight: 120 }} value={g.instructions} onChange={(e) => setG({ ...g, instructions: e.target.value })}
           placeholder="Ej: Soy Lucas, programador freelance. Respondé amable y corto. Si preguntan precios, decí que paso presupuesto por acá. Nunca des mi dirección." />
       </label>
-      <h3 style={{ marginTop: 14 }}>Reglas</h3>
+      <h4>Reglas</h4>
       {g.rules.length === 0 && <p className="hint">Sin reglas todavía.</p>}
       {g.rules.map((r, i) => (
         <div className="row" key={i}>
@@ -206,41 +206,24 @@ function Greeter({ notify }) {
         <button onClick={() => setG({ ...g, rules: [...g.rules, { when: '', reply: '' }] })}>+ Regla</button>
         <button className="primary" onClick={saveG}>Guardar asistente</button>
       </div>
-      <h3 style={{ marginTop: 14 }}>Probar</h3>
+      <h4>Probar</h4>
       <p className="hint">Usa lo guardado (guardá antes de probar).</p>
       <div className="row">
         <label className="f">Mensaje de un desconocido<input value={testText} onChange={(e) => setTestText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && test()} placeholder="Hola, me pasaron tu número por un trabajo" /></label>
         <button disabled={testing || !testText.trim()} onClick={test}>{testing ? 'Generando…' : 'Probar'}</button>
       </div>
       {testReply && <div className="chat" style={{ height: 'auto' }}><div className="bubble contact">{testText}</div><div className="bubble bot">{testReply}</div></div>}
-    </div>
+    </section>
   )
 }
 
-export default function Unknown({ s, save, notify }) {
-  const [filter, setFilter] = useState('pending')
-  const cfg = s.config.unknownInbox
+// Ajustes de la bandeja (detrás de la rueda): qué se le manda a los que aceptás y el asistente de bienvenida.
+function Settings({ cfg, save, notify }) {
   const [fixedText, setFixedText] = useState(cfg.fixedText)
-  const items = (s.unknown || []).filter((e) => e.status === filter)
-  const count = (st) => (s.unknown || []).filter((e) => e.status === st).length
-
   return (
     <>
-      <div className="card">
-        <div className="row" style={{ justifyContent: 'space-between' }}>
-          <h2 style={{ margin: 0 }}>Desconocidos</h2>
-          <label className="switch" title="Detectar desconocidos"><input type="checkbox" checked={cfg.enabled} onChange={(e) => save({ unknownInbox: { enabled: e.target.checked } })} /><span /></label>
-        </div>
-        <p className="hint">Gente que te escribe sin estar en Contactos ni en tu agenda. No se les contesta nada hasta que aceptes. Después del primer mensaje se guardan hasta 5 más, que podés contestar desde acá (generado o escrito por vos) desde <b>Respondidos</b>; tocá un chat para expandirlo. Marcá <b>Listo</b> en un respondido para darlo por terminado: pasa a <b>Listos</b>, queda compacto y aunque vuelva a escribir no pide respuesta.{s.config.dryRun && ' Modo prueba activo: al aceptar no se envía, solo queda en el log.'}</p>
-        <nav className="tabs">
-          {FILTERS.map(([k, l]) => <button key={k} className={filter === k ? 'on' : ''} onClick={() => setFilter(k)}>{l} ({count(k)})</button>)}
-        </nav>
-        {items.length === 0 && <p className="hint">Nada por acá.</p>}
-        {items.map((e) => <Entry key={e.id} e={e} s={s} notify={notify} />)}
-      </div>
-
-      <div className="card">
-        <h2>Respuesta a los que aceptes</h2>
+      <section className="settings-section">
+        <h3>Respuesta a los que aceptes</h3>
         <div className="row">
           <label><input type="radio" checked={cfg.mode === 'fixed'} onChange={() => save({ unknownInbox: { mode: 'fixed' } })} /> Siempre el mismo mensaje</label>
           <label><input type="radio" checked={cfg.mode === 'ai'} onChange={() => save({ unknownInbox: { mode: 'ai' } })} /> Generado por el asistente de bienvenida</label>
@@ -251,9 +234,43 @@ export default function Unknown({ s, save, notify }) {
             <div className="row" style={{ marginTop: 10 }}><button className="primary" disabled={!fixedText.trim()} onClick={() => save({ unknownInbox: { fixedText } })}>Guardar mensaje</button></div>
           </>
         )}
-      </div>
-
+      </section>
       {cfg.mode === 'ai' && <Greeter notify={notify} />}
     </>
+  )
+}
+
+export default function Unknown({ s, save, notify }) {
+  const [filter, setFilter] = useState('pending')
+  const [settings, setSettings] = useState(false)
+  const cfg = s.config.unknownInbox
+  const items = (s.unknown || []).filter((e) => e.status === filter)
+  const count = (st) => (s.unknown || []).filter((e) => e.status === st).length
+
+  return (
+    <div className="card">
+      <div className="row" style={{ justifyContent: 'space-between' }}>
+        <h2 style={{ margin: 0 }}>{settings ? 'Desconocidos · Ajustes' : 'Desconocidos'}</h2>
+        <div className="row" style={{ margin: 0 }}>
+          <label className="switch" title="Detectar desconocidos"><input type="checkbox" checked={cfg.enabled} onChange={(e) => save({ unknownInbox: { enabled: e.target.checked } })} /><span /></label>
+          <button className={'gear' + (settings ? ' on' : '')} title={settings ? 'Volver a la bandeja' : 'Ajustes: respuesta y asistente de bienvenida'} aria-label="Ajustes" aria-pressed={settings} onClick={() => setSettings(!settings)}>
+            {settings ? '✕' : '⚙'}
+          </button>
+        </div>
+      </div>
+
+      {settings ? (
+        <Settings cfg={cfg} save={save} notify={notify} />
+      ) : (
+        <>
+          <p className="hint">Gente que te escribe sin estar en Contactos ni en tu agenda. No se les contesta nada hasta que aceptes. Después del primer mensaje se guardan hasta 5 más, que podés contestar desde acá (generado o escrito por vos) desde <b>Respondidos</b>; tocá un chat para expandirlo. Marcá <b>Listo</b> en un respondido para darlo por terminado: pasa a <b>Listos</b>, queda compacto y aunque vuelva a escribir no pide respuesta. Qué se les manda al aceptar se configura en la rueda ⚙.{s.config.dryRun && ' Modo prueba activo: al aceptar no se envía, solo queda en el log.'}</p>
+          <nav className="tabs">
+            {FILTERS.map(([k, l]) => <button key={k} className={filter === k ? 'on' : ''} onClick={() => setFilter(k)}>{l} ({count(k)})</button>)}
+          </nav>
+          {items.length === 0 && <p className="hint">Nada por acá.</p>}
+          {items.map((e) => <Entry key={e.id} e={e} s={s} notify={notify} />)}
+        </>
+      )}
+    </div>
   )
 }

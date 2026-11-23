@@ -70,3 +70,8 @@ button:disabled { opacity: .5; cursor: default; }
 .done-check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; user-select: none; }
 .done-check input { width: auto; margin: 0; }
 .big.done .done-check { border-color: var(--accent); color: var(--accent); }
+.gear { width: 36px; height: 36px; padding: 0; border-radius: 50%; font-size: 18px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; }
+.gear.on { border-color: var(--accent); color: var(--accent); }
+.settings-section { border-top: 1px solid var(--line); padding-top: 14px; margin-top: 14px; }
+.settings-section h3 { font-size: 15px; margin: 0 0 8px; }
+.settings-section h4 { font-size: 14px; margin: 14px 0 6px; }
